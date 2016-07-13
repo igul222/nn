@@ -1,5 +1,6 @@
 import lib
 import lib.debug
+import lib.ops.batchnorm
 
 import numpy as np
 import theano
@@ -102,5 +103,12 @@ def Deconv1D(
     result = result.dimshuffle(0, 1, 2)
     result = result + biases[None, :, None]
 
-    # result = lib.debug.print_shape(name, result)
+    # result = lib.debug.print_stats(name, result)
+    # result = lib.ops.batchnorm.Batchnorm(
+    #     name+'.BN',
+    #     input_dim=output_dim,
+    #     inputs=result,
+    #     axes=[0,2]
+    # )
+
     return result

@@ -5,7 +5,12 @@ import numpy as np
 import theano
 import theano.tensor as T
 
-def Conv2D(name, input_dim, output_dim, filter_size, inputs, he_init=True, mask_type=None, stride=1):
+_default_weightnorm = False
+def enable_default_weightnorm():
+    global _default_weightnorm
+    _default_weightnorm = True
+
+def Conv2D(name, input_dim, output_dim, filter_size, inputs, he_init=True, mask_type=None, stride=1, weightnorm=None, biases=True):
     """
     inputs: tensor of shape (batch size, num channels, height, width)
     mask_type: one of None, 'a', 'b'
@@ -35,13 +40,22 @@ def Conv2D(name, input_dim, output_dim, filter_size, inputs, he_init=True, mask_
     else: # Normalized init (Glorot & Bengio)
         filters_stdev = np.sqrt(2./(fan_in+fan_out))
 
-    filters = lib.param(
-        name+'.Filters',
-        uniform(
-            filters_stdev,
-            (output_dim, input_dim, filter_size, filter_size)
-        )
+    filter_values = uniform(
+        filters_stdev,
+        (output_dim, input_dim, filter_size, filter_size)
     )
+
+    filters = lib.param(name+'.Filters', filter_values)
+
+    if weightnorm==None:
+        weightnorm = _default_weightnorm
+    if weightnorm:
+        norm_values = np.linalg.norm(filter_values.reshape((filter_values.shape[0], -1)), axis=1)
+        norms = lib.param(
+            name + '.g',
+            norm_values
+        )
+        filters = filters * (norms / filters.reshape((filters.shape[0],-1)).norm(2, axis=1)).dimshuffle(0,'x','x','x')
 
     if mask_type is not None:
         mask = np.ones(
@@ -68,10 +82,11 @@ def Conv2D(name, input_dim, output_dim, filter_size, inputs, he_init=True, mask_
 
         filters = filters * mask
 
-    biases = lib.param(
-        name+'.Biases',
-        np.zeros(output_dim, dtype=theano.config.floatX)
-    )
+    if biases:
+        _biases = lib.param(
+            name+'.Biases',
+            np.zeros(output_dim, dtype=theano.config.floatX)
+        )
 
     result = T.nnet.conv2d(
         inputs, 
@@ -81,6 +96,7 @@ def Conv2D(name, input_dim, output_dim, filter_size, inputs, he_init=True, mask_
         subsample=(stride,stride)
     )
 
-    result = result + biases[None, :, None, None]
+    if biases:
+        result = result + _biases[None, :, None, None]
     # result = lib.debug.print_stats(name, result)
     return result

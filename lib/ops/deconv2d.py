@@ -14,6 +14,11 @@ from theano.sandbox.cuda.dnn import (GpuDnnConvDesc,
                                         dnn_conv, 
                                         dnn_pool)
 
+_default_weightnorm = False
+def enable_default_weightnorm():
+    global _default_weightnorm
+    _default_weightnorm = True
+
 def _deconv2d(X, w, subsample=(1, 1), border_mode=(0, 0), conv_mode='conv'):
     """ 
     from Alec (https://github.com/Newmu/dcgan_code/blob/master/lib/ops.py)
@@ -49,7 +54,8 @@ def Deconv2D(
     output_dim, 
     filter_size, 
     inputs, 
-    he_init=True
+    he_init=True,
+    weightnorm=None
     ):
     """
     inputs: tensor of shape (batch size, num channels, height, width)
@@ -67,13 +73,25 @@ def Deconv2D(
     if he_init:
         filters_stdev *= np.sqrt(2.)
 
+    filter_values = uniform(
+        filters_stdev,
+        (input_dim, output_dim, filter_size, filter_size)
+    )
+
     filters = lib.param(
         name+'.Filters',
-        uniform(
-            filters_stdev,
-            (input_dim, output_dim, filter_size, filter_size)
-        )
+        filter_values
     )
+
+    if weightnorm==None:
+        weightnorm = _default_weightnorm
+    if weightnorm:
+        norm_values = np.sqrt(np.sum(np.square(filter_values), axis=(0,2,3)))
+        norms = lib.param(
+            name + '.g',
+            norm_values
+        )
+        filters = filters * (norms / T.sqrt(T.sum(T.sqr(filters), axis=(0,2,3)))).dimshuffle('x',0,'x','x')
 
     biases = lib.param(
         name+'.Biases',

@@ -1,5 +1,6 @@
 import lib
 import lib.debug
+import lib.ops.batchnorm
 
 import numpy as np
 import theano
@@ -52,5 +53,11 @@ def Conv1D(name, input_dim, output_dim, filter_size, inputs, he_init=True, biase
         )
         result = result + biases_[None, :, None]
 
-    # result = lib.debug.print_shape(name, result)
+    # result = lib.ops.batchnorm.Batchnorm(
+    #     name+'.BN',
+    #     input_dim=output_dim,
+    #     inputs=result,
+    #     axes=[0,2]
+    # )
+    # result = lib.debug.print_stats(name, result)
     return result

@@ -49,20 +49,20 @@ PIXEL_CNN_LAYERS = 4
 PIXEL_CNN_FILTER_SIZE = 3
 SKIP_PIX_CNN = True
 
-CONV_BASE_N_FILTERS = 32
+CONV_BASE_N_FILTERS = 128
 CONV_N_POOLS = 3
 CONV_FILTER_SIZE = 3
 CONV_BN = False # never seemed to help
 CONV_DEEP = False
 
 LATENT_DIM = 128
-ALPHA_ITERS = 10000
+ALPHA_ITERS = 40000
 VANILLA = False
 LR = 1e-4
 
 NEW_ANNEAL = False
 
-DATASET = 'mnist'
+DATASET = 'lsun'
 LSUN_DOWNSAMPLE = True
 
 TIMES = ('iters', 1000, 200000, 1000)
@@ -70,7 +70,7 @@ TIMES = ('iters', 1000, 200000, 1000)
 if DATASET == 'lsun':
     if LSUN_DOWNSAMPLE:
         CONV_N_POOLS = 3
-        TIMES = ('iters', 2000, 400*1000, 20000) # 32dim
+        TIMES = ('iters', 2000, 210000, 20000) # 32dim
     else:
         CONV_N_POOLS = 4
         TIMES = ('iters', 2000, 400*1000, 40000) # 64dim
@@ -352,6 +352,11 @@ if MODE=='256ary':
         sample_fn_output,
         on_unused_input='warn'
     )
+    softmaxed_sample_fn = theano.function(
+        [sample_fn_latents, images],
+        lib.ops.softmax_and_sample.softmax_and_sample(sample_fn_output),
+        on_unused_input='warn'
+    )
 else:
     sample_fn = theano.function(
         [sample_fn_latents, images],
@@ -407,38 +412,43 @@ def generate_and_save_samples(tag):
 
     import sys
 
-    for j in xrange(HEIGHT):
-        for k in xrange(WIDTH):
-            for i in xrange(N_CHANNELS):
-                next_sample = sample_fn(sample_fn_latents, samples)
+    if SKIP_PIX_CNN:
 
-                # For debugging:
-                # sample_fn_hash = next_sample[0,:,:,:,0]
-                # diff = (sample_fn_hash != last_sample_fn_hash)
-                # for h in xrange(HEIGHT):
-                #     for w in xrange(WIDTH):
-                #         for ch in xrange(N_CHANNELS):
-                #             if diff[ch,h,w]:
-                #                 sys.stdout.write('X')
-                #             else:
-                #                 sys.stdout.write('.')
-                #         sys.stdout.write(' ')
-                #     sys.stdout.write("\n")
+        samples = softmaxed_sample_fn(sample_fn_latents, samples)
 
-                # last_sample_fn_hash = sample_fn_hash
+    else:
+        for j in xrange(HEIGHT):
+            for k in xrange(WIDTH):
+                for i in xrange(N_CHANNELS):
+                    next_sample = sample_fn(sample_fn_latents, samples)
 
-                if MODE=='binary':
-                    next_sample = binarize(next_sample)
-                    samples[:, i, j, k] = next_sample[:, i, j, k]
-                else:
-                    pre_softmax = next_sample[:, i, j, k]
-                    pre_softmax = np.array(pre_softmax, dtype='float64')
-                    shift = np.max(pre_softmax, axis=pre_softmax.ndim-1, keepdims=True)
-                    exp = np.exp(pre_softmax - shift)
-                    softmax = exp / np.sum(exp, axis=exp.ndim-1, keepdims=True)
-                    for h in xrange(softmax.shape[0]):
-                        next_sample = np.argmax(np.random.multinomial(1, softmax[h], size=1))
-                        samples[h, i, j, k] = next_sample
+                    # For debugging:
+                    # sample_fn_hash = next_sample[0,:,:,:,0]
+                    # diff = (sample_fn_hash != last_sample_fn_hash)
+                    # for h in xrange(HEIGHT):
+                    #     for w in xrange(WIDTH):
+                    #         for ch in xrange(N_CHANNELS):
+                    #             if diff[ch,h,w]:
+                    #                 sys.stdout.write('X')
+                    #             else:
+                    #                 sys.stdout.write('.')
+                    #         sys.stdout.write(' ')
+                    #     sys.stdout.write("\n")
+
+                    # last_sample_fn_hash = sample_fn_hash
+
+                    if MODE=='binary':
+                        next_sample = binarize(next_sample)
+                        samples[:, i, j, k] = next_sample[:, i, j, k]
+                    else:
+                        pre_softmax = next_sample[:, i, j, k]
+                        pre_softmax = np.array(pre_softmax, dtype='float64')
+                        shift = np.max(pre_softmax, axis=pre_softmax.ndim-1, keepdims=True)
+                        exp = np.exp(pre_softmax - shift)
+                        softmax = exp / np.sum(exp, axis=exp.ndim-1, keepdims=True)
+                        for h in xrange(softmax.shape[0]):
+                            next_sample = np.argmax(np.random.multinomial(1, softmax[h], size=1))
+                            samples[h, i, j, k] = next_sample
 
     if DATASET=='lsun':
         sqrt_n_samples = int(np.sqrt(BATCH_SIZE))
@@ -464,7 +474,7 @@ lib.train_loop.train_loop(
     ],
     optimizer=functools.partial(lasagne.updates.adam, learning_rate=LR),
     train_data=train_data,
-    test_data=dev_data,
+    # test_data=dev_data,
     callback=generate_and_save_samples,
     times=TIMES
 )

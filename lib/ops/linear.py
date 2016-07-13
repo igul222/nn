@@ -5,6 +5,11 @@ import numpy as np
 import theano
 import theano.tensor as T
 
+_default_weightnorm = False
+def enable_default_weightnorm():
+    global _default_weightnorm
+    _default_weightnorm = True
+
 def Linear(
         name, 
         input_dim, 
@@ -12,7 +17,7 @@ def Linear(
         inputs,
         biases=True,
         initialization=None,
-        weightnorm=False
+        weightnorm=None
         ):
     """
     initialization: None, `lecun`, `he`, `orthogonal`, `("uniform", range)`
@@ -76,6 +81,8 @@ def Linear(
         weight_values
     )
 
+    if weightnorm==None:
+        weightnorm = _default_weightnorm
     if weightnorm:
         norm_values = np.linalg.norm(weight_values, axis=0)
         norms = lib.param(

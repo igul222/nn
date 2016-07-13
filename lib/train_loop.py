@@ -63,14 +63,30 @@ def train_loop(
     )
 
     print "Training!"
+
     total_iters = 0
     total_seconds = 0.
     last_print = 0
     last_gen = 0
-    if len(times) < 4:
-        gen_every = times[1]
-    else:
+
+    if len(times) >= 4:
         gen_every = times[3]
+    else:
+        gen_every = times[1]
+
+    if len(times) >= 5:
+        early_stop = times[4]
+        if len(times) >= 6:
+            early_stop_min = times[5]
+        else:
+            early_stop_min = 0
+    else:
+        early_stop = None
+        early_stop_min = None
+
+    best_test_cost = np.inf
+    best_test_cost_iter = 0.
+
     all_outputs = []
     all_stats = []
     for epoch in itertools.count():
@@ -128,6 +144,10 @@ def train_loop(
                 stats['secs'] = total_seconds
                 stats['secs/iter'] = total_seconds / total_iters
 
+                if test_data != None and (stats['test cost'] < best_test_cost or (early_stop_min != None and total_iters <= early_stop_min)):
+                    best_test_cost = stats['test cost']
+                    best_test_cost_iter = total_iters
+
                 print_str = ""
                 for k,v in stats.items():
                     if isinstance(v, int):
@@ -152,7 +172,11 @@ def train_loop(
                 last_gen += gen_every
 
             if (times[0]=='iters' and total_iters == times[2]) or \
-                (times[0]=='seconds' and total_seconds >= times[2]):
+                (times[0]=='seconds' and total_seconds >= times[2]) or \
+                (test_data != None and early_stop != None and total_iters > (3*early_stop) and (total_iters-best_test_cost_iter) > early_stop):
+
+                if (test_data != None and early_stop != None and total_iters > (3*early_stop) and (total_iters-best_test_cost_iter) > early_stop):
+                    print "Early stop! Best test cost was {} at iter {}".format(best_test_cost, best_test_cost_iter)
 
                 print "Done!"
 

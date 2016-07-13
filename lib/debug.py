@@ -24,8 +24,11 @@ def print_shape(name, x):
     return DebugOp(name, fn)(x)
 
 def print_stats(name, x):
+    return x
     def fn(_name, _x):
         mean = np.mean(_x)
         std = np.std(_x)
-        print "{}\tmean:{}\tstd:{}\tpercentiles:{}\t".format(_name, mean, std, np.percentile(_x, [0,25,50,75,100]))
+        percentiles = np.percentile(_x, [0,25,50,75,100])
+        # percentiles = "skipping"
+        print "{}\tmean:{}\tstd:{}\tpercentiles:{}\t".format(_name, mean, std, percentiles)
     return DebugOp(name, fn)(x)

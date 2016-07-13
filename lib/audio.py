@@ -59,9 +59,9 @@ def feed_epoch(
         # data *= (((Q_LEVELS/2.) - eps) / np.abs(data).max(axis=1)[:, None])
         # data += Q_LEVELS/2
 
-        data = data.astype('int32')
+        # data = data.astype('int32')
 
-        return data
+        return np.nan_to_num(data).astype('int32')
 
     paths = [data_path+'/p{}.flac'.format(i) for i in xrange(n_files)]
 
