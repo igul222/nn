@@ -1,9 +1,12 @@
+import sys
+sys.modules['theano'] = None
+
 import numpy as np
 
 from fuel.datasets.hdf5 import H5PYDataset
 from fuel.schemes import ShuffledScheme, SequentialScheme
 from fuel.streams import DataStream
-from fuel.transformers.image import RandomFixedSizeCrop
+# from fuel.transformers.image import RandomFixedSizeCrop
 
 PATH = '/home/ishaan/lsun_bedrooms_2727000_64px.hdf5'
 
