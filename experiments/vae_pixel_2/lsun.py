@@ -68,7 +68,7 @@ DIM_3        = 256
 LATENT_DIM_1 = 256
 DIM_PIX_2    = 512
 DIM_4        = 512
-DIM_5        = 4096
+DIM_5        = 2048
 LATENT_DIM_2 = 2048
 
 # evenbigger
@@ -103,7 +103,7 @@ LR = 1e-3
 
 LSUN_DOWNSAMPLE = True
 
-TIMES = ('iters', 100, 1000*1000, 10000)
+TIMES = ('iters', 1, 1000*1000, 10000)
 
 BATCH_SIZE = 64
 N_CHANNELS = 3
