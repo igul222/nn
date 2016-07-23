@@ -111,7 +111,7 @@ def ResidualBlock(name, input_dim, output_dim, inputs, inputs_stdev, filter_size
 
     output = inputs
     output = nonlinearity(output)
-    output = conv_1(name+'.Conv1', filter_size=filter_size, gain=1./inputs_stdev, mask_type=mask_type, inputs=output, he_init=he_init)
+    output = conv_1(name+'.Conv1', filter_size=filter_size, mask_type=mask_type, inputs=output, he_init=he_init)
     output = nonlinearity(output)
     output = conv_2(name+'.Conv2', filter_size=filter_size, mask_type=mask_type, inputs=output, he_init=he_init)
 
@@ -125,7 +125,7 @@ def Enc1(images):
     output = ResidualBlock('Enc1.Res2', input_dim=DIM_2, output_dim=DIM_3, filter_size=3, resample='down', inputs_stdev=np.sqrt(2), inputs=output)
     output = ResidualBlock('Enc1.Res3', input_dim=DIM_3, output_dim=DIM_3, filter_size=3, resample=None,   inputs_stdev=np.sqrt(3), inputs=output)
 
-    output = lib.ops.conv2d.Conv2D('Enc1.Out', input_dim=DIM_3, output_dim=2*LATENT_DIM_1, filter_size=1, inputs=output, he_init=False, gain=1./np.sqrt(4))
+    output = lib.ops.conv2d.Conv2D('Enc1.Out', input_dim=DIM_3, output_dim=2*LATENT_DIM_1, filter_size=1, inputs=output, he_init=False)
 
     return output
 
@@ -150,11 +150,11 @@ def Dec1(latents, images):
         output = ResidualBlock('Dec1.Pix2Res', input_dim=2*DIM_1,   output_dim=DIM_PIX_1, filter_size=3, mask_type=('b', N_CHANNELS), inputs_stdev=1,          inputs=output)
         output = ResidualBlock('Dec1.Pix3Res', input_dim=DIM_PIX_1, output_dim=DIM_PIX_1, filter_size=1, mask_type=('b', N_CHANNELS), inputs_stdev=np.sqrt(2), inputs=output)
 
-        output = lib.ops.conv2d.Conv2D('Dec1.Out', input_dim=DIM_PIX_1, output_dim=256*N_CHANNELS, filter_size=1, mask_type=('b', N_CHANNELS), he_init=False, gain=1./np.sqrt(3.), inputs=output)
+        output = lib.ops.conv2d.Conv2D('Dec1.Out', input_dim=DIM_PIX_1, output_dim=256*N_CHANNELS, filter_size=1, mask_type=('b', N_CHANNELS), he_init=False, inputs=output)
 
     else:
 
-        output = lib.ops.conv2d.Conv2D('Dec1.Out', input_dim=DIM_1, output_dim=256*N_CHANNELS, filter_size=1, he_init=False, gain=1./np.sqrt(4), inputs=output)
+        output = lib.ops.conv2d.Conv2D('Dec1.Out', input_dim=DIM_1, output_dim=256*N_CHANNELS, filter_size=1, he_init=False, inputs=output)
 
     return tf.transpose(
         tf.reshape(output, [-1, 256, N_CHANNELS, HEIGHT, WIDTH]),
@@ -177,7 +177,7 @@ def Enc2(latents):
     output = ResidualBlock('Enc2.Res3', input_dim=DIM_5, output_dim=DIM_5, filter_size=1, inputs_stdev=np.sqrt(3), he_init=True, inputs=output)
     output = tf.reshape(output, [-1, DIM_5])
 
-    output = lib.ops.linear.Linear('Enc2.Output', input_dim=DIM_5, output_dim=2*LATENT_DIM_2, inputs=output, initialization='glorot', gain=1/np.sqrt(4))
+    output = lib.ops.linear.Linear('Enc2.Output', input_dim=DIM_5, output_dim=2*LATENT_DIM_2, inputs=output, initialization='glorot')
     return output
 
 def Dec2(latents, targets):
@@ -204,7 +204,7 @@ def Dec2(latents, targets):
     output = ResidualBlock('Dec2.Pix2Res', input_dim=2*DIM_3, output_dim=DIM_PIX_2, filter_size=3, mask_type=('b', PIX_2_N_BLOCKS), inputs_stdev=1, he_init=True, inputs=output)
     output = ResidualBlock('Dec2.Pix3Res', input_dim=DIM_PIX_2, output_dim=DIM_PIX_2, filter_size=1, mask_type=('b', PIX_2_N_BLOCKS), inputs_stdev=np.sqrt(2), he_init=True, inputs=output)
 
-    output = lib.ops.conv2d.Conv2D('Dec2.Out', input_dim=DIM_PIX_2, output_dim=2*LATENT_DIM_1, filter_size=1, mask_type=('b', PIX_2_N_BLOCKS), he_init=False, gain=1./np.sqrt(3), inputs=output)
+    output = lib.ops.conv2d.Conv2D('Dec2.Out', input_dim=DIM_PIX_2, output_dim=2*LATENT_DIM_1, filter_size=1, mask_type=('b', PIX_2_N_BLOCKS), he_init=False, inputs=output)
     return output
 
 def EncFull(images):
@@ -224,7 +224,7 @@ def EncFull(images):
     output = ResidualBlock('EncFull.Res5', input_dim=DIM_5, output_dim=DIM_5, filter_size=1, inputs_stdev=np.sqrt(5), he_init=True, inputs=output)
     output = tf.reshape(output, [-1, DIM_5])
 
-    output = lib.ops.linear.Linear('EncFull.Output', input_dim=DIM_5, output_dim=2*LATENT_DIM_2, inputs=output, initialization='glorot', gain=1/np.sqrt(6))
+    output = lib.ops.linear.Linear('EncFull.Output', input_dim=DIM_5, output_dim=2*LATENT_DIM_2, inputs=output, initialization='glorot')
     return output
 
 def DecFull(latents, images):
@@ -256,11 +256,11 @@ def DecFull(latents, images):
         output = ResidualBlock('Dec1.Pix2Res', input_dim=2*DIM_1,   output_dim=DIM_PIX_1, filter_size=3, mask_type=('b', N_CHANNELS), inputs_stdev=1,          inputs=output)
         output = ResidualBlock('Dec1.Pix3Res', input_dim=DIM_PIX_1, output_dim=DIM_PIX_1, filter_size=1, mask_type=('b', N_CHANNELS), inputs_stdev=np.sqrt(2), inputs=output)
 
-        output = lib.ops.conv2d.Conv2D('Dec1.Out', input_dim=DIM_PIX_1, output_dim=256*N_CHANNELS, filter_size=1, mask_type=('b', N_CHANNELS), he_init=False, gain=1/np.sqrt(3), inputs=output)
+        output = lib.ops.conv2d.Conv2D('Dec1.Out', input_dim=DIM_PIX_1, output_dim=256*N_CHANNELS, filter_size=1, mask_type=('b', N_CHANNELS), he_init=False, inputs=output)
 
     else:
 
-        output = lib.ops.conv2d.Conv2D('Dec1.Out', input_dim=DIM_1, output_dim=256*N_CHANNELS, filter_size=1, he_init=False, gain=1/np.sqrt(4), inputs=output)
+        output = lib.ops.conv2d.Conv2D('Dec1.Out', input_dim=DIM_1, output_dim=256*N_CHANNELS, filter_size=1, he_init=False, inputs=output)
 
     return tf.transpose(
         tf.reshape(output, [-1, 256, N_CHANNELS, HEIGHT, WIDTH]),
