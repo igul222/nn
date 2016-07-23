@@ -32,8 +32,11 @@ from scipy.misc import imsave
 import time
 import functools
 
+# two_level uses Enc1/Dec1 for the bottom level, Enc2/Dec2 for the top level
+# one_level uses EncFull/DecFull for the bottom (and only) level
 MODE = 'two_level'
-# MODE = 'one_level'
+
+# Turn on/off the bottom-level PixelCNN in Dec1/DecFull
 PIXEL_LEVEL_PIXCNN = True
 
 DIM_PIX_1    = 128
@@ -362,7 +365,9 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
 
                 # Layer 2
 
-                mu_and_logsig2 = Enc2(latents1)
+                # No need to inject noise into the encoder, so I pass mu1
+                # instead of latents1 to Enc2
+                mu_and_logsig2 = Enc2(mu1)
                 mu2, logsig2, sig2 = split(mu_and_logsig2)
 
                 if VANILLA:
