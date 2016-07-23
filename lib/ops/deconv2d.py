@@ -55,7 +55,7 @@ def Deconv2D(
     filter_size, 
     inputs, 
     he_init=True,
-    weightnorm=None
+    weightnorm=None,
     ):
     """
     inputs: tensor of shape (batch size, num channels, height, width)

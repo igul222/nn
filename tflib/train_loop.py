@@ -1,9 +1,16 @@
+import tflib as lib
+import tflib.debug
+
 import numpy as np
 import tensorflow as tf
 
 import itertools
 import time
 import collections
+import os
+import locale
+
+locale.setlocale(locale.LC_ALL, '')
 
 def train_loop(
     session,
@@ -15,7 +22,10 @@ def train_loop(
     test_data=None,
     callback=None,
     optimizer=tf.train.AdamOptimizer(),
-    inject_total_iters=False
+    inject_total_iters=False,
+    debug_mode=False,
+    save_params=False,
+    profile=False
     ):
 
     prints = [('cost', cost)] + prints
@@ -25,24 +35,66 @@ def train_loop(
         colocate_gradients_with_ops=True
     )
 
-    capped_gvs = [
-        (tf.clip_by_value(grad, -1., 1.), var)
-        for grad, var in grads_and_vars
-    ]
+    print "Params:"
+    total_param_count = 0
+    for g, v in grads_and_vars:
+        shape = v.get_shape()
+        shape_str = ",".join([str(x) for x in v.get_shape()])
 
-    train_op = optimizer.apply_gradients(capped_gvs)
+        param_count = 1
+        for dim in shape:
+            param_count *= int(dim)
+        total_param_count += param_count
 
-    def train_fn(input_vals):
-        return session.run(
-            [p[1] for p in prints] + [train_op],
-            feed_dict={sym:real for sym, real in zip(inputs, input_vals)}
-        )[:-1]
+        if g == None:
+            print "\t{} ({}) [no grad!]".format(v.name, shape_str)
+        else:
+            print "\t{} ({})".format(v.name, shape_str)
+    print "Total param count: {}".format(
+        locale.format("%d", total_param_count, grouping=True)
+    )
+
+    for i in xrange(len(grads_and_vars)):
+        g, v = grads_and_vars[i]
+        if g == None:
+            grads_and_vars[i] = (tf.zeros_like(v), v)
+        else:
+            grads_and_vars[i] = (tf.clip_by_value(g, -1., 1.), v)            
+
+    train_op = optimizer.apply_gradients(grads_and_vars)
+
+    def train_fn(input_vals, i, profile=False):
+        if i==10 and profile:
+            run_metadata = tf.RunMetadata()
+            result = session.run(
+                [p[1] for p in prints] + [train_op],
+                feed_dict={sym:real for sym, real in zip(inputs, input_vals)},
+                options=tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE),
+                run_metadata=run_metadata
+            )[:-1]
+
+            from tensorflow.python.client import timeline
+            trace = timeline.Timeline(step_stats=run_metadata.step_stats)
+            trace_file = open('timeline.ctf.json', 'w')
+            trace_file.write(trace.generate_chrome_trace_format())
+            print "Profiled!"
+        else:
+            return session.run(
+                [p[1] for p in prints] + [train_op],
+                feed_dict={sym:real for sym, real in zip(inputs, input_vals)}
+            )[:-1]
 
     def eval_fn(input_vals):
         return session.run(
             [p[1] for p in prints],
             feed_dict={sym:real for sym, real in zip(inputs, input_vals)}
         )
+
+    def print_stats_fn(input_vals):
+        if debug_mode:
+            lib.debug.print_all_stats(
+                feed_dict={sym:real for sym, real in zip(inputs, input_vals)}
+            )
 
     print "Initializing variables"
     session.run(tf.initialize_all_variables())
@@ -55,6 +107,7 @@ def train_loop(
     all_stats = []
     run_times = []
 
+    print "Training!"
     for epoch in itertools.count():
         generator = train_data()
         while True:
@@ -66,8 +119,10 @@ def train_loop(
             if inject_total_iters:
                 input_vals = [np.int32(total_iters)] + list(input_vals)
 
+            print_stats_fn(input_vals)
+
             start_time = time.time()
-            outputs = train_fn(input_vals)
+            outputs = train_fn(input_vals, total_iters, profile)
             run_time = time.time() - start_time
             total_seconds += run_time
             total_iters += 1
@@ -127,6 +182,7 @@ def train_loop(
                     tag = "iters{}_time{}".format(total_iters, total_seconds)
                     if callback is not None:
                         callback(tag)
+
                     if save_params:
                         lib.save_params('params_{}.pkl'.format(tag))
 

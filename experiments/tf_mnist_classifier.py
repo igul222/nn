@@ -71,8 +71,8 @@ with tf.Session() as session:
             tower_costs.append(cost)
             tower_accs.append(acc)
 
-        cost = tf.reduce_mean(tf.concat(0, [tf.expand_dims(c, 0) for c in tower_costs]), 0)
-        acc = tf.reduce_mean(tf.concat(0, [tf.expand_dims(a, 0) for a in tower_accs]), 0)
+    cost = tf.reduce_mean(tf.concat(0, [tf.expand_dims(c, 0) for c in tower_costs]), 0)
+    acc = tf.reduce_mean(tf.concat(0, [tf.expand_dims(a, 0) for a in tower_accs]), 0)
 
     train_data, dev_data, test_data = lib.mnist.load(
         BATCH_SIZE,

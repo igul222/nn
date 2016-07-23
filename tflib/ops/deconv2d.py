@@ -1,4 +1,5 @@
 import tflib as lib
+import tflib.debug
 
 import numpy as np
 import tensorflow as tf
@@ -16,61 +17,81 @@ def Deconv2D(
     inputs, 
     he_init=True,
     weightnorm=None,
-    biases=True
+    biases=True,
+    gain=1.,
+    mask_type=None,
     ):
     """
     inputs: tensor of shape (batch size, height, width, input_dim)
     returns: tensor of shape (batch size, 2*height, 2*width, output_dim)
     """
-    def uniform(stdev, size):
-        return np.random.uniform(
-            low=-stdev * np.sqrt(3),
-            high=stdev * np.sqrt(3),
-            size=size
-        ).astype('float32')
+    with tf.name_scope(name) as scope:
 
-    filters_stdev = np.sqrt(1./(input_dim * filter_size**2))
-    filters_stdev *= 2. # Because of the stride
-    if he_init:
-        filters_stdev *= np.sqrt(2.)
+        if mask_type != None:
+            raise Exception('Unsupported configuration')
 
-    filter_values = uniform(
-        filters_stdev,
-        (filter_size, filter_size, output_dim, input_dim)
-    )
+        def uniform(stdev, size):
+            return np.random.uniform(
+                low=-stdev * np.sqrt(3),
+                high=stdev * np.sqrt(3),
+                size=size
+            ).astype('float32')
 
-    filters = lib.param(
-        name+'.Filters',
-        filter_values
-    )
+        stride = 2
+        fan_in = input_dim * filter_size**2 / (stride**2)
+        fan_out = output_dim * filter_size**2
 
-    if weightnorm==None:
-        weightnorm = _default_weightnorm
-    if weightnorm:
-        norm_values = np.sqrt(np.sum(np.square(filter_values), axis=(0,1,3)))
-        target_norms = lib.param(
-            name + '.g',
-            norm_values
+        if he_init:
+            filters_stdev = np.sqrt(4./(fan_in+fan_out))
+        else: # Normalized init (Glorot & Bengio)
+            filters_stdev = np.sqrt(2./(fan_in+fan_out))
+
+        filter_values = uniform(
+            filters_stdev,
+            (filter_size, filter_size, output_dim, input_dim)
         )
-        norms = tf.sqrt(tf.reduce_sum(tf.square(filters), reduction_indices=[0,1,3]))
-        filters = filters * tf.expand_dims(target_norms / norms, 1)
+        filter_values *= gain
 
-    input_shape = tf.shape(inputs)
-    output_shape = tf.pack([input_shape[0], 2*input_shape[1], 2*input_shape[2], output_dim])
-
-    result = tf.nn.conv2d_transpose(
-        value=inputs, 
-        filter=filters,
-        output_shape=output_shape, 
-        strides=[1, 2, 2, 1],
-        padding='SAME'
-    )
-
-    if biases:
-        _biases = lib.param(
-            name+'.Biases',
-            np.zeros(output_dim, dtype='float32')
+        filters = lib.param(
+            name+'.Filters',
+            filter_values
         )
-        result = tf.nn.bias_add(result, _biases)
 
-    return result
+        if weightnorm==None:
+            weightnorm = _default_weightnorm
+        if weightnorm:
+            norm_values = np.sqrt(np.sum(np.square(filter_values), axis=(0,1,3)))
+            target_norms = lib.param(
+                name + '.g',
+                norm_values
+            )
+            with tf.name_scope('weightnorm') as scope:
+                norms = tf.sqrt(tf.reduce_sum(tf.square(filters), reduction_indices=[0,1,3]))
+                filters = filters * tf.expand_dims(target_norms / norms, 1)
+
+
+        inputs = tf.transpose(inputs, [0,2,3,1], name='NCHW_to_NHWC')
+
+        input_shape = tf.shape(inputs)
+        output_shape = tf.pack([input_shape[0], 2*input_shape[1], 2*input_shape[2], output_dim])
+
+        result = tf.nn.conv2d_transpose(
+            value=inputs, 
+            filter=filters,
+            output_shape=output_shape, 
+            strides=[1, 2, 2, 1],
+            padding='SAME'
+        )
+
+        if biases:
+            _biases = lib.param(
+                name+'.Biases',
+                np.zeros(output_dim, dtype='float32')
+            )
+            result = tf.nn.bias_add(result, _biases)
+
+        result = tf.transpose(result, [0,3,1,2], name='NHWC_to_NCHW')
+
+        # lib.debug.print_stats(name, result)
+
+        return result

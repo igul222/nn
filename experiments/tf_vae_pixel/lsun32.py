@@ -31,35 +31,36 @@ from scipy.misc import imsave
 import time
 import functools
 
-DIM_1        = 128
-DIM_PIX_1    = 128
+DIM_1        = 64
+DIM_PIX_1    = 64
 DIM_2        = 128
 DIM_3        = 256
-LATENT_DIM_1 = 256
-DIM_PIX_2    = 512
+LATENT_DIM_1 = 64
+DIM_PIX_2    = 256
 DIM_4        = 512
 DIM_5        = 2048
-LATENT_DIM_2 = 2048
+LATENT_DIM_2 = 512
 
-ALPHA_ITERS = 10000
-KL2_CLAMP_ITERS = 20000
+ALPHA_ITERS = 20000
+KL1_CLAMP_ITERS = 10000
+KL2_CLAMP_ITERS = 50000
 BETA_ITERS = 1000
 
-VANILLA = False
+VANILLA = True
 LR = 1e-3
 
-BATCH_SIZE = 64
+BATCH_SIZE = 256
 N_CHANNELS = 3
 HEIGHT = 32
 WIDTH = 32
 
-# DEVICES = ['/gpu:0', '/gpu:1', '/gpu:2', '/gpu:3']
-DEVICES = ['/gpu:0']
+DEVICES = ['/gpu:0', '/gpu:1', '/gpu:2', '/gpu:3']
+# DEVICES = ['/gpu:0']
 
 TIMES = {
     'mode': 'iters',
     'print_every': 1,
-    'stop_after': 10000,
+    'stop_after': 1000*1000,
     'gen_every': 1000
 }
 
@@ -111,13 +112,13 @@ with tf.Session() as session:
             'Dec1.Pix1', 
             input_dim=N_CHANNELS,
             output_dim=DIM_1,
-            filter_size=7, 
+            filter_size=5, 
             inputs=images, 
             mask_type=('a', N_CHANNELS)
         ))
 
         # Warning! Because of the masked convolutions it's very important that masked_images comes first in this concat
-        output = tf.concat(3, [masked_images, output])
+        output = tf.concat(1, [masked_images, output])
 
         output = tf.nn.relu(lib.ops.conv2d.Conv2D('Dec1.Pix3', input_dim=2*DIM_1, output_dim=DIM_PIX_1, filter_size=3, inputs=output, mask_type=('b', N_CHANNELS)))
         output = tf.nn.relu(lib.ops.conv2d.Conv2D('Dec1.Pix4', input_dim=DIM_PIX_1, output_dim=DIM_PIX_1, filter_size=3, inputs=output, mask_type=('b', N_CHANNELS)))
@@ -128,8 +129,8 @@ with tf.Session() as session:
         output = lib.ops.conv2d.Conv2D('Dec1.Out', input_dim=DIM_PIX_1, output_dim=256*N_CHANNELS, filter_size=1, inputs=output, mask_type=('b', N_CHANNELS), he_init=False)
 
         return tf.transpose(
-            tf.reshape(output, [-1, HEIGHT, WIDTH, 256, N_CHANNELS]),
-            [0,1,2,4,3]
+            tf.reshape(output, [-1, 256, N_CHANNELS, HEIGHT, WIDTH]),
+            [0,2,3,4,1]
         )
 
     def Enc2(latents):
@@ -160,7 +161,7 @@ with tf.Session() as session:
         output = tf.nn.relu(lib.ops.linear.Linear('Dec2.2', input_dim=DIM_5,        output_dim=DIM_5,     initialization='glorot_he', inputs=output))
         output = tf.nn.relu(lib.ops.linear.Linear('Dec2.3', input_dim=DIM_5,      output_dim=4*4*DIM_4, initialization='glorot_he', inputs=output))
 
-        output = tf.reshape(output, [-1, 4, 4, DIM_4])
+        output = tf.reshape(output, [-1, DIM_4, 4, 4])
 
         output = tf.nn.relu(lib.ops.conv2d.Conv2D('Dec2.4', input_dim=DIM_4, output_dim=DIM_4, filter_size=3, inputs=output))
         output = tf.nn.relu(lib.ops.conv2d.Conv2D('Dec2.5', input_dim=DIM_4, output_dim=DIM_4, filter_size=3, inputs=output))
@@ -177,7 +178,7 @@ with tf.Session() as session:
             mask_type=('a', 1)
         ))
 
-        output = tf.concat(3, [masked_targets, output])
+        output = tf.concat(1, [masked_targets, output])
 
         output = tf.nn.relu(lib.ops.conv2d.Conv2D('Dec2.Pix3', input_dim=2*DIM_3, output_dim=DIM_PIX_2, filter_size=3, inputs=output, mask_type=('b', 1)))
         output = tf.nn.relu(lib.ops.conv2d.Conv2D('Dec2.Pix4', input_dim=DIM_PIX_2, output_dim=DIM_PIX_2, filter_size=3, inputs=output, mask_type=('b', 1)))
@@ -190,10 +191,10 @@ with tf.Session() as session:
         return output
 
     total_iters = tf.placeholder(tf.int32, shape=None)
-    images = tf.placeholder(tf.int32, shape=[None, 32, 32, 3])
+    all_images = tf.placeholder(tf.int32, shape=[None, 3, 32, 32])
 
     def conv_split(mu_and_logsig):
-        mu, logsig = tf.split(3, 2, mu_and_logsig)
+        mu, logsig = tf.split(1, 2, mu_and_logsig)
         logsig = tf.log(tf.nn.softplus(logsig))
         return mu, logsig
 
@@ -206,74 +207,116 @@ with tf.Session() as session:
         beta = tf.minimum(1., tf.cast(total_iters, 'float32') / BETA_ITERS)
         return tf.maximum(beta*logsig, logsig)
 
-    # Layer 1
+    split_images = tf.split(0, len(DEVICES), all_images)
 
-    mu_and_logsig1 = Enc1(images)
-    mu1, logsig1 = conv_split(mu_and_logsig1)
+    tower_cost = []
+    tower_reconst_cost = []
+    tower_kl_cost_1 = []
+    tower_clamped_kl_1 = []
+    tower_kl_cost_2 = []
+    tower_clamped_kl_2 = []
 
-    if VANILLA:
-        latents1 = mu1
-    else:
-        eps = tf.random_normal(tf.shape(mu1))
-        latents1 = mu1 + (eps * tf.exp(logsig1))
+    for device, images in zip(DEVICES, split_images):
+        with tf.device(device):
 
-    outputs1 = Dec1(latents1, images)
+            # Layer 1
 
-    reconst_cost = tf.reduce_mean(
-        tf.nn.sparse_softmax_cross_entropy_with_logits(
-            tf.reshape(outputs1, [-1, 256]),
-            tf.reshape(images, [-1])
-        )
-    )
+            mu_and_logsig1 = Enc1(images)
+            mu1, logsig1 = conv_split(mu_and_logsig1)
 
-    # Layer 2
+            if VANILLA:
+                latents1 = mu1
+            else:
+                eps = tf.random_normal(tf.shape(mu1))
+                latents1 = mu1 + (eps * tf.exp(logsig1))
 
-    mu_and_logsig2 = Enc2(latents1)
-    mu2, logsig2 = fc_split(mu_and_logsig2)
+            outputs1 = Dec1(latents1, images)
 
-    if VANILLA:
-        latents2 = mu2
-    else:
-        eps = tf.random_normal(tf.shape(mu2))
-        latents2 = mu2 + (eps * tf.exp(logsig2))
+            reconst_cost = tf.reduce_mean(
+                tf.nn.sparse_softmax_cross_entropy_with_logits(
+                    tf.reshape(outputs1, [-1, 256]),
+                    tf.reshape(images, [-1])
+                )
+            )
 
-    outputs2 = Dec2(latents2, latents1)
+            # Layer 2
 
-    mu1_prior, logsig1_prior = conv_split(outputs2)
-    logsig1_prior = clamp_logsig(logsig1_prior)
+            mu_and_logsig2 = Enc2(latents1)
+            mu2, logsig2 = fc_split(mu_and_logsig2)
 
-    # Assembly
+            if VANILLA:
+                latents2 = mu2
+            else:
+                eps = tf.random_normal(tf.shape(mu2))
+                latents2 = mu2 + (eps * tf.exp(logsig2))
 
-    alpha = tf.minimum(1., tf.cast(total_iters, 'float32') / ALPHA_ITERS)
-    kl2_clamp = tf.maximum(0.125, 4 * (1 - (tf.cast(total_iters, 'float32') / KL2_CLAMP_ITERS)))
+            outputs2 = Dec2(latents2, latents1)
 
-    kl_cost_1 = lib.ops.kl_gaussian_gaussian.kl_gaussian_gaussian(
-        mu1,
-        logsig1,
-        mu1_prior,
-        logsig1_prior
-    )
-    kl_cost_1 = tf.reduce_mean(kl_cost_1)
+            mu1_prior, logsig1_prior = conv_split(outputs2)
+            logsig1_prior = clamp_logsig(logsig1_prior)
 
-    kl_cost_2 = tf.reduce_mean(
-        lib.ops.kl_unit_gaussian.kl_unit_gaussian(
-            mu2, 
-            logsig2
-        ),
-        reduction_indices=[0]
-    )
-    clamped_kl_2 = tf.maximum(kl2_clamp, kl_cost_2)
-    clamped_kl_2 = tf.reduce_mean(clamped_kl_2)
-    kl_cost_2 = tf.reduce_mean(kl_cost_2)
+            # Assembly
 
-    kl_cost_1    *= float(LATENT_DIM_1*8*8) / (N_CHANNELS * WIDTH * HEIGHT)
-    kl_cost_2    *= float(LATENT_DIM_2)     / (N_CHANNELS * WIDTH * HEIGHT)
-    clamped_kl_2 *= float(LATENT_DIM_2)     / (N_CHANNELS * WIDTH * HEIGHT)
+            alpha = tf.minimum(1., tf.cast(total_iters, 'float32') / ALPHA_ITERS)
 
-    if VANILLA:
-        cost = reconst_cost
-    else:
-        cost = reconst_cost + (alpha**2 * kl_cost_1) + (alpha**5 * clamped_kl_2)
+            kl1_clamp = 16 * (1 - (tf.cast(total_iters, 'float32') / KL1_CLAMP_ITERS))
+            kl2_clamp = 4 * (1 - (tf.cast(total_iters, 'float32') / KL2_CLAMP_ITERS))
+
+            # kl2_clamp = tf.maximum(
+            #     0.125, 
+            #     4 * (1 - (tf.cast(total_iters, 'float32') / KL2_CLAMP_ITERS))
+            # )
+
+            kl_cost_1 = tf.reduce_sum(
+                tf.reduce_mean(
+                    lib.ops.kl_gaussian_gaussian.kl_gaussian_gaussian(
+                        mu1,
+                        logsig1,
+                        mu1_prior,
+                        logsig1_prior
+                    ),
+                    reduction_indices=[0]
+                ),
+                reduction_indices=[0,1]
+            )
+            clamped_kl_1 = tf.maximum(kl1_clamp, kl_cost_1)
+            clamped_kl_1 = tf.reduce_mean(clamped_kl_1)
+            kl_cost_1 = tf.reduce_mean(kl_cost_1)
+
+            kl_cost_2 = tf.reduce_mean(
+                lib.ops.kl_unit_gaussian.kl_unit_gaussian(
+                    mu2, 
+                    logsig2
+                ),
+                reduction_indices=[0]
+            )
+            clamped_kl_2 = tf.maximum(kl2_clamp, kl_cost_2)
+            clamped_kl_2 = tf.reduce_mean(clamped_kl_2)
+            kl_cost_2 = tf.reduce_mean(kl_cost_2)
+
+            kl_cost_1    *= float(LATENT_DIM_1)     / (N_CHANNELS * WIDTH * HEIGHT)
+            clamped_kl_1 *= float(LATENT_DIM_1)     / (N_CHANNELS * WIDTH * HEIGHT)
+            kl_cost_2    *= float(LATENT_DIM_2)     / (N_CHANNELS * WIDTH * HEIGHT)
+            clamped_kl_2 *= float(LATENT_DIM_2)     / (N_CHANNELS * WIDTH * HEIGHT)
+
+            if VANILLA:
+                cost = reconst_cost
+            else:
+                # cost = reconst_cost + clamped_kl_1 + clamped_kl_2
+                cost = reconst_cost + (alpha**2 * kl_cost_1) + (alpha**5 * clamped_kl_2)
+                # cost = reconst_cost + (alpha**2 * kl_cost_1) + (alpha**5 * clamped_kl_2)
+
+            tower_cost.append(cost)
+            tower_kl_cost_1.append(kl_cost_1)
+            tower_clamped_kl_1.append(clamped_kl_1)
+            tower_kl_cost_2.append(kl_cost_2)
+            tower_clamped_kl_2.append(clamped_kl_2)
+
+    cost = tf.reduce_mean(tf.concat(0, [tf.expand_dims(x, 0) for x in tower_cost]), 0)
+    kl_cost_1 = tf.reduce_mean(tf.concat(0, [tf.expand_dims(x, 0) for x in tower_kl_cost_1]), 0)
+    clamped_kl_1 = tf.reduce_mean(tf.concat(0, [tf.expand_dims(x, 0) for x in tower_clamped_kl_1]), 0)
+    kl_cost_2 = tf.reduce_mean(tf.concat(0, [tf.expand_dims(x, 0) for x in tower_kl_cost_2]), 0)
+    clamped_kl_2 = tf.reduce_mean(tf.concat(0, [tf.expand_dims(x, 0) for x in tower_clamped_kl_2]), 0)
 
     # # Sampling
 
@@ -379,13 +422,14 @@ with tf.Session() as session:
 
     lib.train_loop.train_loop(
         session=session,
-        inputs=[total_iters, images],
+        inputs=[total_iters, all_images],
         inject_total_iters=True,
         cost=cost,
         prints=[
             ('alpha', alpha), 
             ('reconst', reconst_cost), 
             ('kl1', kl_cost_1),
+            ('clamped_kl1', clamped_kl_1),
             ('kl2', kl_cost_2),
             ('clamped_kl2', clamped_kl_2)
         ],

@@ -49,7 +49,7 @@ def _make_stream(stream, bs, downsample):
             # print "warning overfit mode"
             # color_grid_vis(result.transpose(0,3,1,2)[:,:3,:,:], 2, 2, 'reals.png')
             # while True:
-            yield (result,)
+            yield (result.transpose(0,3,1,2),)
             # yield (result.transpose(0,3,1,2)[:,:3,:,:],)
     return new_stream
 
