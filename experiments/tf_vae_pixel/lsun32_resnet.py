@@ -36,13 +36,13 @@ MODE = 'two_level'
 # MODE = 'one_level'
 PIXEL_LEVEL_PIXCNN = True
 
-DIM_PIX_1    = 64
+DIM_PIX_1    = 128
 DIM_1        = 64
 DIM_2        = 128
 DIM_3        = 256
 LATENT_DIM_1 = 64
+DIM_PIX_2    = 512
 
-DIM_PIX_2    = 256
 DIM_4        = 512
 DIM_5        = 2048
 LATENT_DIM_2 = 512
@@ -139,7 +139,7 @@ def Dec1(latents, images):
 
     if PIXEL_LEVEL_PIXCNN:
 
-        masked_images = lib.ops.conv2d.Conv2D('Dec1.Pix1', input_dim=N_CHANNELS, output_dim=DIM_1, filter_size=5, inputs=images, mask_type=('a', N_CHANNELS), he_init=False)
+        masked_images = lib.ops.conv2d.Conv2D('Dec1.Pix1', input_dim=N_CHANNELS, output_dim=DIM_1, filter_size=7, inputs=images, mask_type=('a', N_CHANNELS), he_init=False)
 
         # Make the stdev of output and masked_images match
         output /= np.sqrt(4)
@@ -194,7 +194,7 @@ def Dec2(latents, targets):
     output = ResidualBlock('Dec2.Res2', input_dim=DIM_4, output_dim=DIM_4, filter_size=3, resample=None, inputs_stdev=np.sqrt(2), he_init=True, inputs=output)
     output = ResidualBlock('Dec2.Res3', input_dim=DIM_4, output_dim=DIM_3, filter_size=3, resample='up', inputs_stdev=np.sqrt(3), he_init=True, inputs=output)
 
-    masked_targets = lib.ops.conv2d.Conv2D('Dec2.Pix1', input_dim=LATENT_DIM_1, output_dim=DIM_3, filter_size=5, mask_type=('a', PIX_2_N_BLOCKS), he_init=False, inputs=targets)
+    masked_targets = lib.ops.conv2d.Conv2D('Dec2.Pix1', input_dim=LATENT_DIM_1, output_dim=DIM_3, filter_size=7, mask_type=('a', PIX_2_N_BLOCKS), he_init=False, inputs=targets)
 
     # Make the stdev of output and masked_targets match
     output /= np.sqrt(4)
