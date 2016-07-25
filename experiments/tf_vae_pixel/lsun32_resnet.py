@@ -64,7 +64,7 @@ PIX_2_N_BLOCKS = 1
 
 TIMES = {
     'mode': 'iters',
-    'print_every': 1,
+    'print_every': 1000,
     'stop_after': 200000,
     'callback_every': 10000
 }
