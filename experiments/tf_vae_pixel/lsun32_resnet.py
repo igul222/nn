@@ -32,6 +32,10 @@ from scipy.misc import imsave
 import time
 import functools
 
+# Switch these lines to use 1 vs 4 GPUs
+DEVICES = ['/gpu:0']
+# DEVICES = ['/gpu:0', '/gpu:1', '/gpu:2', '/gpu:3']
+
 # two_level uses Enc1/Dec1 for the bottom level, Enc2/Dec2 for the top level
 # one_level uses EncFull/DecFull for the bottom (and only) level
 MODE = 'two_level'
@@ -39,6 +43,8 @@ MODE = 'two_level'
 # Turn on/off the bottom-level PixelCNN in Dec1/DecFull
 PIXEL_LEVEL_PIXCNN = True
 
+# These settings are good for a 'smaller' model that trains (up to 200K iters)
+# in ~1 day on a GTX 1080 (probably equivalent to 2 K40s).
 DIM_PIX_1    = 128
 DIM_1        = 64
 DIM_2        = 128
@@ -50,7 +56,18 @@ DIM_4        = 512
 DIM_5        = 2048
 LATENT_DIM_2 = 512
 
+# In Dec2, we break each spatial location into N blocks (analogous to channels
+# in the original PixelCNN) and model each spatial location autoregressively
+# as P(x)=P(x0)*P(x1|x0)*P(x2|x0,x1)... In my experiments values of N > 1
+# actually hurt performance. Unsure why; might be a bug.
 PIX_2_N_BLOCKS = 1
+
+TIMES = {
+    'mode': 'iters',
+    'print_every': 1,
+    'stop_after': 200000,
+    'callback_every': 10000
+}
 
 ALPHA_ITERS = 40000
 SQUARE_ALPHA = False
@@ -64,16 +81,6 @@ N_CHANNELS = 3
 HEIGHT = 32
 WIDTH = 32
 
-# DEVICES = ['/gpu:0', '/gpu:1', '/gpu:2', '/gpu:3']
-DEVICES = ['/gpu:0']
-
-TIMES = {
-    'mode': 'iters',
-    'print_every': 1000,
-    'stop_after': 200000,
-    'callback_every': 10000
-}
-
 lib.print_model_settings(locals().copy())
 
 lib.ops.conv2d.enable_default_weightnorm()
@@ -84,6 +91,9 @@ train_data, dev_data = lib.lsun_downsampled.load(BATCH_SIZE)
 
 def nonlinearity(x):
     return tf.nn.elu(x)
+
+def pixcnn_gated_nonlinearity(a, b):
+    return tf.sigmoid(a) * tf.tanh(b)
 
 def ResidualBlock(name, input_dim, output_dim, inputs, inputs_stdev, filter_size, mask_type=None, resample=None, he_init=True):
     """
@@ -101,9 +111,14 @@ def ResidualBlock(name, input_dim, output_dim, inputs, inputs_stdev, filter_size
         conv_1        = functools.partial(lib.ops.deconv2d.Deconv2D, input_dim=input_dim, output_dim=output_dim)
         conv_2        = functools.partial(lib.ops.conv2d.Conv2D, input_dim=output_dim, output_dim=output_dim)
     elif resample==None:
-        conv_shortcut = lib.ops.conv2d.Conv2D
-        conv_1        = functools.partial(lib.ops.conv2d.Conv2D, input_dim=input_dim,  output_dim=output_dim)
-        conv_2        = functools.partial(lib.ops.conv2d.Conv2D, input_dim=output_dim, output_dim=output_dim)
+        if mask_type==None:
+            conv_shortcut = lib.ops.conv2d.Conv2D
+            conv_1        = functools.partial(lib.ops.conv2d.Conv2D, input_dim=input_dim,  output_dim=output_dim)
+            conv_2        = functools.partial(lib.ops.conv2d.Conv2D, input_dim=output_dim, output_dim=output_dim)
+        else:
+            conv_shortcut = lib.ops.conv2d.Conv2D
+            conv_1        = functools.partial(lib.ops.conv2d.Conv2D, input_dim=input_dim,  output_dim=output_dim/2)
+            conv_2        = functools.partial(lib.ops.conv2d.Conv2D, input_dim=output_dim/2, output_dim=output_dim)
     else:
         raise Exception('invalid resample value')
 
@@ -113,10 +128,17 @@ def ResidualBlock(name, input_dim, output_dim, inputs, inputs_stdev, filter_size
         shortcut = conv_shortcut(name+'.Shortcut', input_dim=input_dim, output_dim=output_dim, filter_size=1, mask_type=mask_type, he_init=False, biases=False, inputs=inputs)
 
     output = inputs
-    output = nonlinearity(output)
-    output = conv_1(name+'.Conv1', filter_size=filter_size, mask_type=mask_type, inputs=output, he_init=he_init)
-    output = nonlinearity(output)
-    output = conv_2(name+'.Conv2', filter_size=filter_size, mask_type=mask_type, inputs=output, he_init=he_init)
+    if mask_type == None:
+        output = nonlinearity(output)
+        output = conv_1(name+'.Conv1', filter_size=filter_size, mask_type=mask_type, inputs=output, he_init=he_init)
+        output = nonlinearity(output)
+        output = conv_2(name+'.Conv2', filter_size=filter_size, mask_type=mask_type, inputs=output, he_init=he_init)
+    else:
+        output = nonlinearity(output)
+        output_a = conv_1(name+'.Conv1A', filter_size=filter_size, mask_type=mask_type, inputs=output, he_init=he_init)
+        output_b = conv_1(name+'.Conv1B', filter_size=filter_size, mask_type=mask_type, inputs=output, he_init=he_init)
+        output = pixcnn_gated_nonlinearity(output_a, output_b)
+        output = conv_2(name+'.Conv2', filter_size=filter_size, mask_type=mask_type, inputs=output, he_init=he_init)
 
     return shortcut + (0.3 * output)
 
