@@ -111,14 +111,9 @@ def ResidualBlock(name, input_dim, output_dim, inputs, inputs_stdev, filter_size
         conv_1        = functools.partial(lib.ops.deconv2d.Deconv2D, input_dim=input_dim, output_dim=output_dim)
         conv_2        = functools.partial(lib.ops.conv2d.Conv2D, input_dim=output_dim, output_dim=output_dim)
     elif resample==None:
-        if mask_type==None:
-            conv_shortcut = lib.ops.conv2d.Conv2D
-            conv_1        = functools.partial(lib.ops.conv2d.Conv2D, input_dim=input_dim,  output_dim=output_dim)
-            conv_2        = functools.partial(lib.ops.conv2d.Conv2D, input_dim=output_dim, output_dim=output_dim)
-        else:
-            conv_shortcut = lib.ops.conv2d.Conv2D
-            conv_1        = functools.partial(lib.ops.conv2d.Conv2D, input_dim=input_dim,  output_dim=output_dim/2)
-            conv_2        = functools.partial(lib.ops.conv2d.Conv2D, input_dim=output_dim/2, output_dim=output_dim)
+        conv_shortcut = lib.ops.conv2d.Conv2D
+        conv_1        = functools.partial(lib.ops.conv2d.Conv2D, input_dim=input_dim,  output_dim=output_dim)
+        conv_2        = functools.partial(lib.ops.conv2d.Conv2D, input_dim=output_dim, output_dim=output_dim)
     else:
         raise Exception('invalid resample value')
 
