@@ -599,13 +599,21 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
             ('kl2', kl_cost_2),
         ]
 
+    decayed_lr = tf.train.exponential_decay(
+        LR, 
+        total_iters, 
+        150000, 
+        1e-1, 
+        staircase=True
+    )
+
     lib.train_loop.train_loop(
         session=session,
         inputs=[total_iters, all_images],
         inject_total_iters=True,
         cost=cost,
         prints=prints,
-        optimizer=tf.train.AdamOptimizer(LR),
+        optimizer=tf.train.AdamOptimizer(decayed_lr),
         train_data=train_data,
         # test_data=dev_data,
         callback=generate_and_save_samples,
