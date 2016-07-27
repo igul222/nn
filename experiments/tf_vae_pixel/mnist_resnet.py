@@ -5,6 +5,7 @@ Ishaan Gulrajani + Faruk Ahmed
 
 import os, sys
 sys.path.append(os.getcwd())
+sys.path.append('/u/ahmedfar/Ishaan/nn/')
 
 try: # This only matters on Ishaan's computer
     import experiment_tools
@@ -32,8 +33,9 @@ import time
 import functools
 
 # Switch these lines to use 1 vs 4 GPUs
-DEVICES = ['/gpu:0']
-# DEVICES = ['/gpu:0', '/gpu:1', '/gpu:2', '/gpu:3']
+# DEVICES = ['/gpu:0']
+DEVICES = ['gpu:5', '/gpu:6']
+# DEVICES = ['/gpu:4', '/gpu:5', '/gpu:6', '/gpu:7']
 
 # two_level uses Enc1/Dec1 for the bottom level, Enc2/Dec2 for the top level
 # one_level uses EncFull/DecFull for the bottom (and only) level
@@ -75,7 +77,7 @@ PIX_2_N_BLOCKS = 1
 
 TIMES = {
     'mode': 'iters',
-    'print_every': 500,
+    'print_every': 100,
     'stop_after': 2000*500,
     'callback_every': 10000
 }
@@ -94,9 +96,9 @@ WIDTH = 28
 
 lib.print_model_settings(locals().copy())
 
-lib.ops.conv2d.enable_default_weightnorm()
-lib.ops.deconv2d.enable_default_weightnorm()
-lib.ops.linear.enable_default_weightnorm()
+#lib.ops.conv2d.enable_default_weightnorm()
+#lib.ops.deconv2d.enable_default_weightnorm()
+#lib.ops.linear.enable_default_weightnorm()
 
 train_data, dev_data, test_data = lib.mnist_binarized.load(BATCH_SIZE, BATCH_SIZE)
 
@@ -245,13 +247,13 @@ def EncFull(images):
     output = ResidualBlock('EncFull.Res3', input_dim=DIM_3, output_dim=DIM_4, filter_size=3, resample='down', inputs_stdev=np.sqrt(3), inputs=output)
     output = ResidualBlock('EncFull.Res4', input_dim=DIM_4, output_dim=DIM_4, filter_size=3, resample=None,   inputs_stdev=np.sqrt(4), inputs=output)
 
-    output = tf.reshape(output, [BATCH_SIZE, 4*4*DIM_4])
+    output = tf.reshape(output, [-1, 4*4*DIM_4])
     output = lib.ops.linear.Linear('EncFull.ConvToFC', input_dim=4*4*DIM_4, output_dim=DIM_5, initialization='glorot', inputs=output)
 
     # We implement an FC residual block as a conv over a 1x1 featuremap
-    output = tf.reshape(output, [BATCH_SIZE, DIM_5, 1, 1])
+    output = tf.reshape(output, [-1, DIM_5, 1, 1])
     output = ResidualBlock('EncFull.Res5', input_dim=DIM_5, output_dim=DIM_5, filter_size=1, inputs_stdev=np.sqrt(5), he_init=True, inputs=output)
-    output = tf.reshape(output, [BATCH_SIZE, DIM_5])
+    output = tf.reshape(output, [-1, DIM_5])
 
     output = lib.ops.linear.Linear('EncFull.Output', input_dim=DIM_5, output_dim=2*LATENT_DIM_2, inputs=output, initialization='glorot')
     return output
@@ -260,12 +262,12 @@ def DecFull(latents, images):
     output = tf.clip_by_value(latents, -50., 50.)
     output = lib.ops.linear.Linear('DecFull.Input', input_dim=LATENT_DIM_2, output_dim=DIM_5, initialization='glorot', inputs=output)
 
-    output = tf.reshape(output, [BATCH_SIZE, DIM_5, 1, 1])
+    output = tf.reshape(output, [-1, DIM_5, 1, 1])
     output = ResidualBlock('DecFull.Res1', input_dim=DIM_5, output_dim=DIM_5, filter_size=1, inputs_stdev=1, he_init=True, inputs=output)
-    output = tf.reshape(output, [BATCH_SIZE, DIM_5])
+    output = tf.reshape(output, [-1, DIM_5])
 
     output = lib.ops.linear.Linear('DecFull.FCToConv', input_dim=DIM_5, output_dim=4*4*DIM_4, initialization='glorot', inputs=output)
-    output = tf.reshape(output, [BATCH_SIZE, DIM_4, 4, 4])
+    output = tf.reshape(output, [-1, DIM_4, 4, 4])
 
     output = ResidualBlock('DecFull.Res2', input_dim=DIM_4, output_dim=DIM_4, filter_size=3, resample=None, inputs_stdev=np.sqrt(2), he_init=True, inputs=output)
     output = ResidualBlock('DecFull.Res3', input_dim=DIM_4, output_dim=DIM_3, filter_size=3, resample='up', inputs_stdev=np.sqrt(3), he_init=True, inputs=output)
@@ -293,7 +295,7 @@ def DecFull(latents, images):
 
         output = lib.ops.conv2d.Conv2D('Dec1.Out', input_dim=DIM_1, output_dim=N_CHANNELS, filter_size=1, he_init=False, inputs=output)
 
-    return tf.reshape(output, [BATCH_SIZE, N_CHANNELS, HEIGHT, WIDTH])
+    return tf.reshape(output, [-1, N_CHANNELS, HEIGHT, WIDTH])
 
 with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
     total_iters = tf.placeholder(tf.int32, shape=None, name='total_iters')
@@ -340,6 +342,16 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
                 reconst_cost = tf.reduce_mean(
                     tf.nn.sigmoid_cross_entropy_with_logits(outputs1, images)
                 )
+                
+                #logits = tf.reshape(outputs1, [-1, N_CHANNELS*HEIGHT*WIDTH])
+                #targets = tf.reshape(images, [-1, N_CHANNELS*HEIGHT*WIDTH])
+
+                #logistics = tf.sigmoid(logits)
+
+                #reconst_cost = -math_ops.reduce_mean(targets * math_ops.log(logistics) + (1 - targets) * math_ops.log(1 - logistics))
+                #reconst_cost = tf.reduce_mean(reconst_cost)
+
+                reconst_cost *= N_CHANNELS*HEIGHT*WIDTH
 
                 # Assembly
 
@@ -357,7 +369,7 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
                     )
                 )
 
-                kl_cost_1 *= float(LATENT_DIM_2) / (N_CHANNELS*WIDTH*HEIGHT)
+                kl_cost_1 *= float(LATENT_DIM_2)
 
                 if VANILLA:
                     cost = reconst_cost
