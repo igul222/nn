@@ -5,7 +5,6 @@ Ishaan Gulrajani + Faruk Ahmed
 
 import os, sys
 sys.path.append(os.getcwd())
-sys.path.append('/u/ahmedfar/Ishaan/nn/')
 
 try: # This only matters on Ishaan's computer
     import experiment_tools
@@ -189,7 +188,7 @@ def Dec1(latents, images):
 
         output = lib.ops.conv2d.Conv2D('Dec1.Out', input_dim=DIM_1, output_dim=N_CHANNELS, filter_size=1, he_init=False, inputs=output)
 
-    return tf.reshape(output, [BATCH_SIZE, N_CHANNELS, HEIGHT, WIDTH])
+    return tf.reshape(output, [-1, N_CHANNELS, HEIGHT, WIDTH])
 
 def Enc2(latents):
     output = tf.clip_by_value(latents, -50., 50.)
@@ -199,13 +198,13 @@ def Enc2(latents):
     output = ResidualBlock('Enc2.Res1', input_dim=DIM_3, output_dim=DIM_4, filter_size=3, resample='down', inputs_stdev=1,          he_init=True, inputs=output)
     output = ResidualBlock('Enc2.Res2', input_dim=DIM_4, output_dim=DIM_4, filter_size=3, resample=None,   inputs_stdev=np.sqrt(2), he_init=True, inputs=output)
 
-    output = tf.reshape(output, [BATCH_SIZE, 4*4*DIM_4])
+    output = tf.reshape(output, [-1, 4*4*DIM_4])
     output = lib.ops.linear.Linear('Enc2.ConvToFC', input_dim=4*4*DIM_4, output_dim=DIM_5, initialization='glorot', inputs=output)
 
     # We implement an FC residual block as a conv over a 1x1 featuremap
-    output = tf.reshape(output, [BATCH_SIZE, DIM_5, 1, 1])
+    output = tf.reshape(output, [-1, DIM_5, 1, 1])
     output = ResidualBlock('Enc2.Res3', input_dim=DIM_5, output_dim=DIM_5, filter_size=1, inputs_stdev=np.sqrt(3), he_init=True, inputs=output)
-    output = tf.reshape(output, [BATCH_SIZE, DIM_5])
+    output = tf.reshape(output, [-1, DIM_5])
 
     output = lib.ops.linear.Linear('Enc2.Output', input_dim=DIM_5, output_dim=2*LATENT_DIM_2, inputs=output, initialization='glorot')
     return output
@@ -214,12 +213,12 @@ def Dec2(latents, targets):
     output = tf.clip_by_value(latents, -50., 50.)
     output = lib.ops.linear.Linear('Dec2.Input', input_dim=LATENT_DIM_2, output_dim=DIM_5, initialization='glorot', inputs=output)
 
-    output = tf.reshape(output, [BATCH_SIZE, DIM_5, 1, 1])
+    output = tf.reshape(output, [-1, DIM_5, 1, 1])
     output = ResidualBlock('Dec2.Res1', input_dim=DIM_5, output_dim=DIM_5, filter_size=1, inputs_stdev=1, he_init=True, inputs=output)
-    output = tf.reshape(output, [BATCH_SIZE, DIM_5])
+    output = tf.reshape(output, [-1, DIM_5])
 
     output = lib.ops.linear.Linear('Dec2.FCToConv', input_dim=DIM_5, output_dim=4*4*DIM_4, initialization='glorot', inputs=output)
-    output = tf.reshape(output, [BATCH_SIZE, DIM_4, 4, 4])
+    output = tf.reshape(output, [-1, DIM_4, 4, 4])
 
     output = ResidualBlock('Dec2.Res2', input_dim=DIM_4, output_dim=DIM_4, filter_size=3, resample=None, inputs_stdev=np.sqrt(2), he_init=True, inputs=output)
     output = ResidualBlock('Dec2.Res3', input_dim=DIM_4, output_dim=DIM_3, filter_size=3, resample='up', inputs_stdev=np.sqrt(3), he_init=True, inputs=output)
