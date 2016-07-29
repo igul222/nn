@@ -107,7 +107,14 @@ def ResidualBlock(name, input_dim, output_dim, inputs, inputs_stdev, filter_size
         conv_1        = functools.partial(lib.ops.conv2d.Conv2D, input_dim=input_dim, output_dim=input_dim)
         conv_2        = functools.partial(lib.ops.conv2d.Conv2D, input_dim=input_dim, output_dim=output_dim, stride=2)
     elif resample=='up':
-        conv_shortcut = lib.ops.deconv2d.Deconv2D
+        def conv_shortcut(*args, **kwargs):
+            kwargs['output_dim'] = 4*kwargs['output_dim']
+            output = lib.ops.conv2d.Conv2D(*args, **kwargs)
+            output = tf.transpose(output, [0,2,3,1])
+            old_shape = tf.shape(output)
+            output = tf.reshape(output, tf.pack([old_shape[0], 2*old_shape[1], 2*old_shape[2], old_shape[3]/4]))
+            output = tf.transpose(output, [0,3,1,2])
+            return output
         conv_1        = functools.partial(lib.ops.deconv2d.Deconv2D, input_dim=input_dim, output_dim=output_dim)
         conv_2        = functools.partial(lib.ops.conv2d.Conv2D, input_dim=output_dim, output_dim=output_dim)
     elif resample==None:
