@@ -103,6 +103,7 @@ def train_loop(
     total_iters = 0
     total_seconds = 0.
     last_print = 0
+    last_test = 0
     last_gen = 0
     all_outputs = []
     all_stats = []
@@ -136,7 +137,14 @@ def train_loop(
 
                 mean_outputs = np.array(all_outputs).mean(axis=0)
 
-                if test_data is not None:
+                test = (test_data is not None) and \
+                    ( \
+                        (times['mode']=='iters' and total_iters-last_test == times['test_every']) or \
+                        (times['mode']=='seconds' and total_seconds-last_test >= times['test_every'])
+                    )
+
+
+                if test:
 
                     if inject_total_iters:
                         test_outputs = [
@@ -156,7 +164,7 @@ def train_loop(
                 stats['iters'] = total_iters
                 for i,p in enumerate(prints):
                     stats['train '+p[0]] = mean_outputs[i]
-                if test_data is not None:
+                if test:
                     for i,p in enumerate(prints):
                         stats['test '+p[0]] = test_mean_outputs[i]
                 stats['secs'] = total_seconds
@@ -175,6 +183,9 @@ def train_loop(
                 all_outputs = []
                 run_times = []
                 last_print += times['print_every']
+
+                if test:
+                    last_test += times['test_every']
 
             if callback:
                 if (times['mode']=='iters' and total_iters-last_gen==times['callback_every']) or \
