@@ -66,10 +66,12 @@ TIMES = {
     'mode': 'iters',
     'print_every': 1000,
     'stop_after': 200000,
-    'callback_every': 10000
+    'callback_every': 20000
 }
 
-ALPHA_ITERS = 40000
+ALPHA1_ITERS = 5000
+ALPHA2_ITERS = 5000
+KL_PENALTY = 1.01
 SQUARE_ALPHA = False
 BETA_ITERS = 1000
 
@@ -409,7 +411,8 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
 
                 # An alpha of exactly 0 can sometimes cause inf/nan values, so we're
                 # careful to avoid it.
-                alpha = tf.minimum(1., tf.cast(total_iters+1, 'float32') / ALPHA_ITERS)
+                alpha1 = tf.minimum(1., tf.cast(total_iters+1, 'float32') / ALPHA1_ITERS) * KL_PENALTY
+                alpha2 = tf.minimum(1., tf.cast(total_iters+1, 'float32') / ALPHA2_ITERS) * alpha1
 
                 kl_cost_1 = tf.reduce_mean(
                     lib.ops.kl_gaussian_gaussian.kl_gaussian_gaussian(
@@ -436,7 +439,7 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
                 if VANILLA:
                     cost = reconst_cost
                 else:
-                    cost = reconst_cost + (alpha * kl_cost_1) + (alpha**2 * kl_cost_2)
+                    cost = reconst_cost + (alpha1 * kl_cost_1) + (alpha2 * kl_cost_2)
 
             tower_cost.append(cost)
 
@@ -590,7 +593,8 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
         ]
     elif MODE == 'two_level':
         prints=[
-            ('alpha', alpha), 
+            ('alpha1', alpha1),
+            ('alpha2', alpha2),
             ('reconst', reconst_cost), 
             ('kl1', kl_cost_1),
             ('kl2', kl_cost_2),
