@@ -522,7 +522,7 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
             return session.run([latents1, latents2], feed_dict={images: _images, total_iters: 99999})
 
         sample_fn_latents2 = np.random.normal(size=(32, LATENT_DIM_2)).astype('float32')
-        dev_images = dev_data().next()[0]
+        sample_fn_latents2[1::2] = sample_fn_latents2[0::2]
         sample_fn_latent1_randn = np.random.normal(size=(8,8,32,LATENT_DIM_1))
 
         def generate_and_save_samples(tag):
@@ -539,10 +539,6 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
 
             print "Generating latents1"
 
-            r_latents1, r_latents2 = enc_fn(dev_images)
-            sample_fn_latents2[:8:2] = r_latents2[:4]
-            sample_fn_latents2[1::2] = sample_fn_latents2[0::2]
-
             latents1 = np.zeros(
                 (32, LATENT_DIM_1, 8, 8),
                 dtype='float32'
@@ -557,16 +553,12 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
                         z = mu + ( np.exp(logsig) * sample_fn_latent1_randn[y,x] )
                         latents1[:,block::PIX_2_N_BLOCKS,y,x] = z[:,block::PIX_2_N_BLOCKS]
 
-            latents1[8:16:2] = r_latents1[:4]
-            latents1[9:17:2] = r_latents1[:4]
-
             latents1_copied = np.zeros(
                 (64, LATENT_DIM_1, 8, 8),
                 dtype='float32'
             )
             latents1_copied[0::2] = latents1
             latents1_copied[1::2] = latents1
-
 
             samples = np.zeros(
                 (64, N_CHANNELS, HEIGHT, WIDTH), 
@@ -580,13 +572,11 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
                         next_sample = dec1_fn(latents1_copied, samples, ch, y, x)
                         samples[:,ch,y,x] = next_sample
 
-            samples[16:32:4] = dev_images[:4]
-
             print "Saving samples"
             color_grid_vis(
-                samples, 
-                8, 
-                8, 
+                samples,
+                8,
+                8,
                 'samples_{}.png'.format(tag)
             )
 
