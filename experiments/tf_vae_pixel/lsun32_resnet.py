@@ -6,9 +6,11 @@ Ishaan Gulrajani
 import os, sys
 sys.path.append(os.getcwd())
 
+N_GPUS = 1
+
 try: # This only matters on Ishaan's computer
     import experiment_tools
-    experiment_tools.wait_for_gpu(tf=True)
+    experiment_tools.wait_for_gpu(tf=True, n_gpus=N_GPUS)
 except ImportError:
     pass
 
@@ -31,10 +33,6 @@ from scipy.misc import imsave
 
 import time
 import functools
-
-# Switch these lines to use 1 vs 4 GPUs
-DEVICES = ['/gpu:0']
-# DEVICES = ['/gpu:0', '/gpu:1', '/gpu:2', '/gpu:3']
 
 # two_level uses Enc1/Dec1 for the bottom level, Enc2/Dec2 for the top level
 # one_level uses EncFull/DecFull for the bottom (and only) level
@@ -84,6 +82,8 @@ HEIGHT = 32
 WIDTH = 32
 
 lib.print_model_settings(locals().copy())
+
+DEVICES = ['/gpu:{}'.format(i) for i in xrange(N_GPUS)]
 
 lib.ops.conv2d.enable_default_weightnorm()
 lib.ops.deconv2d.enable_default_weightnorm()
@@ -301,9 +301,6 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
     all_images = tf.placeholder(tf.int32, shape=[None, 3, 32, 32], name='all_images')
 
     def split(mu_and_logsig):
-        # The PIX_2_N_BLOCKS stuff assumes that tf.split splits things as
-        # (1,1,1,2,2,2) rather than (1,2,1,2,1,2). If things seem buggy, maybe
-        # start looking here.
         mu, logsig = tf.split(1, 2, mu_and_logsig)
         sig = tf.nn.softsign(logsig)+1
         logsig = tf.log(sig)
@@ -443,7 +440,9 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
 
             tower_cost.append(cost)
 
-    cost = tf.reduce_mean(tf.concat(0, [tf.expand_dims(x, 0) for x in tower_cost]), 0)
+    full_cost = tf.reduce_mean(
+        tf.concat(0, [tf.expand_dims(x, 0) for x in tower_cost]), 0
+    )
 
     # Sampling
 
@@ -604,7 +603,7 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
         session=session,
         inputs=[total_iters, all_images],
         inject_total_iters=True,
-        cost=cost,
+        cost=full_cost,
         prints=prints,
         optimizer=tf.train.AdamOptimizer(LR),
         train_data=train_data,
