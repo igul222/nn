@@ -6,7 +6,7 @@ Ishaan Gulrajani
 import os, sys
 sys.path.append(os.getcwd())
 
-N_GPUS = 1
+N_GPUS = 2
 
 try: # This only matters on Ishaan's computer
     import experiment_tools
@@ -24,7 +24,7 @@ import tflib.ops.deconv2d
 import tflib.ops.linear
 import tflib.ops.batchnorm
 
-import tflib.lsun_downsampled
+import tflib.lsun_bedrooms
 
 import numpy as np
 import tensorflow as tf
@@ -37,6 +37,9 @@ import functools
 # two_level uses Enc1/Dec1 for the bottom level, Enc2/Dec2 for the top level
 # one_level uses EncFull/DecFull for the bottom (and only) level
 MODE = 'two_level'
+
+# 32x32 or 64x64
+DOWNSAMPLE = False
 
 # Turn on/off the bottom-level PixelCNN in Dec1/DecFull
 PIXEL_LEVEL_PIXCNN = True
@@ -60,26 +63,41 @@ LATENT_DIM_2 = 512
 # actually hurt performance. Unsure why; might be a bug.
 PIX_2_N_BLOCKS = 1
 
-TIMES = {
-    'mode': 'iters',
-    'print_every': 1000,
-    'stop_after': 200000,
-    'callback_every': 20000
-}
-
 ALPHA1_ITERS = 5000
 ALPHA2_ITERS = 5000
 KL_PENALTY = 1.01
-SQUARE_ALPHA = False
 BETA_ITERS = 1000
 
 VANILLA = False
 LR = 1e-3
 
-BATCH_SIZE = 64
-N_CHANNELS = 3
-HEIGHT = 32
-WIDTH = 32
+if DOWNSAMPLE:
+    BATCH_SIZE = 64
+    N_CHANNELS = 3
+    HEIGHT = 32
+    WIDTH = 32
+    LATENTS1_WIDTH = 8
+    LATENTS1_HEIGHT = 8
+
+    TIMES = {
+        'mode': 'iters',
+        'print_every': 1000,
+        'stop_after': 200000,
+        'callback_every': 2000
+    }
+else:
+    BATCH_SIZE = 64
+    N_CHANNELS = 3
+    HEIGHT = 64
+    WIDTH = 64
+    LATENTS1_WIDTH = 8
+    LATENTS1_HEIGHT = 8
+    TIMES = {
+        'mode': 'iters',
+        'print_every': 1000,
+        'stop_after': 100000,
+        'callback_every': 25000
+    }
 
 lib.print_model_settings(locals().copy())
 
@@ -89,7 +107,7 @@ lib.ops.conv2d.enable_default_weightnorm()
 lib.ops.deconv2d.enable_default_weightnorm()
 lib.ops.linear.enable_default_weightnorm()
 
-train_data, dev_data = lib.lsun_downsampled.load(BATCH_SIZE)
+train_data, dev_data = lib.lsun_bedrooms.load(BATCH_SIZE, downsample=DOWNSAMPLE)
 
 def nonlinearity(x):
     return tf.nn.elu(x)
@@ -150,6 +168,9 @@ def Enc1(images):
     output = images
     output = lib.ops.conv2d.Conv2D('Enc1.Input', input_dim=N_CHANNELS, output_dim=DIM_1, filter_size=1, inputs=output, he_init=False)
 
+    if not DOWNSAMPLE:
+        output = ResidualBlock('Enc1.Res0', input_dim=DIM_1, output_dim=DIM_1, filter_size=3, resample='down', inputs_stdev=1, inputs=output)
+
     output = ResidualBlock('Enc1.Res1', input_dim=DIM_1, output_dim=DIM_2, filter_size=3, resample='down', inputs_stdev=1,          inputs=output)
     output = ResidualBlock('Enc1.Res2', input_dim=DIM_2, output_dim=DIM_3, filter_size=3, resample='down', inputs_stdev=np.sqrt(2), inputs=output)
     output = ResidualBlock('Enc1.Res3', input_dim=DIM_3, output_dim=DIM_3, filter_size=3, resample=None,   inputs_stdev=np.sqrt(3), inputs=output)
@@ -165,6 +186,9 @@ def Dec1(latents, images):
     output = ResidualBlock('Dec1.Res1', input_dim=DIM_3, output_dim=DIM_3, filter_size=3, resample=None, inputs_stdev=1, inputs=output)
     output = ResidualBlock('Dec1.Res2', input_dim=DIM_3, output_dim=DIM_2, filter_size=3, resample='up', inputs_stdev=np.sqrt(2), inputs=output)
     output = ResidualBlock('Dec1.Res3', input_dim=DIM_2, output_dim=DIM_1, filter_size=3, resample='up', inputs_stdev=np.sqrt(3), inputs=output)
+
+    if not DOWNSAMPLE:
+        output = ResidualBlock('Dec1.Res4', input_dim=DIM_1, output_dim=DIM_1, filter_size=3, resample='up', inputs_stdev=np.sqrt(3), inputs=output)
 
     if PIXEL_LEVEL_PIXCNN:
 
@@ -298,7 +322,7 @@ def DecFull(latents, images):
 
 with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
     total_iters = tf.placeholder(tf.int32, shape=None, name='total_iters')
-    all_images = tf.placeholder(tf.int32, shape=[None, 3, 32, 32], name='all_images')
+    all_images = tf.placeholder(tf.int32, shape=[None, N_CHANNELS, HEIGHT, WIDTH], name='all_images')
 
     def split(mu_and_logsig):
         mu, logsig = tf.split(1, 2, mu_and_logsig)
@@ -347,9 +371,7 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
                 # An alpha of exactly 0 can sometimes cause inf/nan values, so we're
                 # careful to avoid it.
                 alpha = tf.minimum(1., tf.cast(total_iters+1, 'float32') / ALPHA_ITERS)
-                if SQUARE_ALPHA:
-                    alpha = alpha**2
-
+                
                 kl_cost_1 = tf.reduce_mean(
                     lib.ops.kl_unit_gaussian.kl_unit_gaussian(
                         mu1, 
@@ -409,7 +431,7 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
                 # An alpha of exactly 0 can sometimes cause inf/nan values, so we're
                 # careful to avoid it.
                 alpha1 = tf.minimum(1., tf.cast(total_iters+1, 'float32') / ALPHA1_ITERS) * KL_PENALTY
-                alpha2 = tf.minimum(1., tf.cast(total_iters+1, 'float32') / ALPHA2_ITERS) * alpha1
+                alpha2 = tf.minimum(1., tf.cast(total_iters+1, 'float32') / ALPHA2_ITERS) * alpha1# * KL_PENALTY
 
                 kl_cost_1 = tf.reduce_mean(
                     lib.ops.kl_gaussian_gaussian.kl_gaussian_gaussian(
@@ -430,8 +452,8 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
                     )
                 )
 
-                kl_cost_1 *= float(LATENT_DIM_1*8*8) / (N_CHANNELS * WIDTH * HEIGHT)
-                kl_cost_2 *= float(LATENT_DIM_2)     / (N_CHANNELS * WIDTH * HEIGHT)
+                kl_cost_1 *= float(LATENT_DIM_1 * LATENTS1_WIDTH * LATENTS1_HEIGHT) / (N_CHANNELS * WIDTH * HEIGHT)
+                kl_cost_2 *= float(LATENT_DIM_2) / (N_CHANNELS * WIDTH * HEIGHT)
 
                 if VANILLA:
                     cost = reconst_cost
@@ -525,7 +547,7 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
 
         sample_fn_latents2 = np.random.normal(size=(32, LATENT_DIM_2)).astype('float32')
         sample_fn_latents2[1::2] = sample_fn_latents2[0::2]
-        sample_fn_latent1_randn = np.random.normal(size=(8,8,32,LATENT_DIM_1))
+        sample_fn_latent1_randn = np.random.normal(size=(LATENTS1_HEIGHT,LATENTS1_WIDTH,32,LATENT_DIM_1))
 
         def generate_and_save_samples(tag):
             def color_grid_vis(X, nh, nw, save_path):
@@ -542,7 +564,7 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
             print "Generating latents1"
 
             latents1 = np.zeros(
-                (32, LATENT_DIM_1, 8, 8),
+                (32, LATENT_DIM_1, LATENTS1_HEIGHT, LATENTS1_WIDTH),
                 dtype='float32'
             )
 
@@ -556,7 +578,7 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
                         latents1[:,block::PIX_2_N_BLOCKS,y,x] = z[:,block::PIX_2_N_BLOCKS]
 
             latents1_copied = np.zeros(
-                (64, LATENT_DIM_1, 8, 8),
+                (64, LATENT_DIM_1, LATENTS1_HEIGHT, LATENTS1_WIDTH),
                 dtype='float32'
             )
             latents1_copied[0::2] = latents1
