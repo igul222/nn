@@ -303,7 +303,7 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
         # (1,1,1,2,2,2) rather than (1,2,1,2,1,2). If things seem buggy, maybe
         # start looking here.
         mu, logsig = tf.split(1, 2, mu_and_logsig)
-        sig = tf.nn.softplus(logsig)
+        sig = tf.nn.softsign(logsig)+1
         logsig = tf.log(sig)
         return mu, logsig, sig
 
