@@ -63,15 +63,15 @@ LATENT_DIM_2 = 512
 # actually hurt performance. Unsure why; might be a bug.
 PIX_2_N_BLOCKS = 1
 
-ALPHA1_ITERS = 5000
-ALPHA2_ITERS = 5000
-KL_PENALTY = 1.01
-BETA_ITERS = 1000
-
 VANILLA = False
 LR = 1e-3
 
 if DOWNSAMPLE:
+    ALPHA1_ITERS = 5000
+    ALPHA2_ITERS = 5000
+    KL_PENALTY = 1.01
+    BETA_ITERS = 1000
+
     BATCH_SIZE = 64
     N_CHANNELS = 3
     HEIGHT = 32
@@ -86,6 +86,11 @@ if DOWNSAMPLE:
         'callback_every': 2000
     }
 else:
+    ALPHA1_ITERS = 20000
+    ALPHA2_ITERS = 20000
+    KL_PENALTY = 1.01
+    BETA_ITERS = 1000
+
     BATCH_SIZE = 64
     N_CHANNELS = 3
     HEIGHT = 64
@@ -200,7 +205,7 @@ def Dec1(latents, images):
         # Warning! Because of the masked convolutions it's very important that masked_images comes first in this concat
         output = tf.concat(1, [masked_images, output])
 
-        output = ResidualBlock('Dec1.Pix2Res', input_dim=2*DIM_1,   output_dim=DIM_PIX_1, filter_size=3, mask_type=('b', N_CHANNELS), inputs_stdev=1,          inputs=output)
+        output = ResidualBlock('Dec1.Pix2Res', input_dim=2*DIM_1,   output_dim=DIM_PIX_1, filter_size=5, mask_type=('b', N_CHANNELS), inputs_stdev=1,          inputs=output)
         output = ResidualBlock('Dec1.Pix3Res', input_dim=DIM_PIX_1, output_dim=DIM_PIX_1, filter_size=1, mask_type=('b', N_CHANNELS), inputs_stdev=np.sqrt(2), inputs=output)
 
         output = lib.ops.conv2d.Conv2D('Dec1.Out', input_dim=DIM_PIX_1, output_dim=256*N_CHANNELS, filter_size=1, mask_type=('b', N_CHANNELS), he_init=False, inputs=output)
