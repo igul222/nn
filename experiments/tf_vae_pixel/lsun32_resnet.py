@@ -86,7 +86,7 @@ if DOWNSAMPLE:
         'callback_every': 2000
     }
 else:
-    ALPHA1_ITERS = 20000
+    ALPHA1_ITERS = 5000
     ALPHA2_ITERS = 20000
     KL_PENALTY = 1.01
     BETA_ITERS = 1000
@@ -171,10 +171,11 @@ def ResidualBlock(name, input_dim, output_dim, inputs, inputs_stdev, filter_size
 
 def Enc1(images):
     output = images
-    output = lib.ops.conv2d.Conv2D('Enc1.Input', input_dim=N_CHANNELS, output_dim=DIM_1, filter_size=1, inputs=output, he_init=False)
 
-    if not DOWNSAMPLE:
-        output = ResidualBlock('Enc1.Res0', input_dim=DIM_1, output_dim=DIM_1, filter_size=3, resample='down', inputs_stdev=1, inputs=output)
+    output = lib.ops.conv2d.Conv2D('Enc1.Input', input_dim=N_CHANNELS, output_dim=DIM_1, filter_size=5, inputs=output, he_init=False, stride=2)
+
+    # if not DOWNSAMPLE:
+        # output = ResidualBlock('Enc1.Res0', input_dim=DIM_1, output_dim=DIM_1, filter_size=3, resample='down', inputs_stdev=1, inputs=output)
 
     output = ResidualBlock('Enc1.Res1', input_dim=DIM_1, output_dim=DIM_2, filter_size=3, resample='down', inputs_stdev=1,          inputs=output)
     output = ResidualBlock('Enc1.Res2', input_dim=DIM_2, output_dim=DIM_3, filter_size=3, resample='down', inputs_stdev=np.sqrt(2), inputs=output)
