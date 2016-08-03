@@ -6,7 +6,7 @@ Ishaan Gulrajani
 import os, sys
 sys.path.append(os.getcwd())
 
-N_GPUS = 2
+N_GPUS = 4
 
 try: # This only matters on Ishaan's computer
     import experiment_tools
@@ -46,7 +46,7 @@ PIXEL_LEVEL_PIXCNN = True
 
 # These settings are good for a 'smaller' model that trains (up to 200K iters)
 # in ~1 day on a GTX 1080 (probably equivalent to 2 K40s).
-DIM_PIX_1    = 128
+DIM_PIX_1    = 256
 DIM_1        = 64
 DIM_2        = 128
 DIM_3        = 256
@@ -54,7 +54,7 @@ LATENT_DIM_1 = 64
 DIM_PIX_2    = 512
 
 DIM_4        = 512
-DIM_5        = 2048
+DIM_5        = 4096
 LATENT_DIM_2 = 512
 
 # In Dec2, we break each spatial location into N blocks (analogous to channels
@@ -88,7 +88,7 @@ if DOWNSAMPLE:
 else:
     ALPHA1_ITERS = 5000
     ALPHA2_ITERS = 20000
-    KL_PENALTY = 1.01
+    KL_PENALTY = 1.00
     BETA_ITERS = 1000
 
     BATCH_SIZE = 64
@@ -99,8 +99,8 @@ else:
     LATENTS1_HEIGHT = 8
     TIMES = {
         'mode': 'iters',
-        'print_every': 1000,
-        'stop_after': 200000,
+        'print_every': 1,
+        'stop_after': 400000,
         'callback_every': 25000
     }
 
@@ -206,7 +206,7 @@ def Dec1(latents, images):
         # Warning! Because of the masked convolutions it's very important that masked_images comes first in this concat
         output = tf.concat(1, [masked_images, output])
 
-        output = ResidualBlock('Dec1.Pix2Res', input_dim=2*DIM_1,   output_dim=DIM_PIX_1, filter_size=5, mask_type=('b', N_CHANNELS), inputs_stdev=1,          inputs=output)
+        output = ResidualBlock('Dec1.Pix2Res', input_dim=2*DIM_1,   output_dim=DIM_PIX_1, filter_size=7, mask_type=('b', N_CHANNELS), inputs_stdev=1,          inputs=output)
         output = ResidualBlock('Dec1.Pix3Res', input_dim=DIM_PIX_1, output_dim=DIM_PIX_1, filter_size=1, mask_type=('b', N_CHANNELS), inputs_stdev=np.sqrt(2), inputs=output)
 
         output = lib.ops.conv2d.Conv2D('Dec1.Out', input_dim=DIM_PIX_1, output_dim=256*N_CHANNELS, filter_size=1, mask_type=('b', N_CHANNELS), he_init=False, inputs=output)
@@ -226,31 +226,35 @@ def Enc2(latents):
     output = lib.ops.conv2d.Conv2D('Enc2.Input', input_dim=LATENT_DIM_1, output_dim=DIM_3, filter_size=1, inputs=output, he_init=False)
 
     output = ResidualBlock('Enc2.Res1', input_dim=DIM_3, output_dim=DIM_4, filter_size=3, resample='down', inputs_stdev=1,          he_init=True, inputs=output)
-    output = ResidualBlock('Enc2.Res2', input_dim=DIM_4, output_dim=DIM_4, filter_size=3, resample=None,   inputs_stdev=np.sqrt(2), he_init=True, inputs=output)
+    # output = ResidualBlock('Enc2.Res2', input_dim=DIM_4, output_dim=DIM_4, filter_size=3, resample=None,   inputs_stdev=np.sqrt(2), he_init=True, inputs=output)
 
     output = tf.reshape(output, [-1, 4*4*DIM_4])
-    output = lib.ops.linear.Linear('Enc2.ConvToFC', input_dim=4*4*DIM_4, output_dim=DIM_5, initialization='glorot', inputs=output)
+    output = tf.nn.elu(output)
+    output = lib.ops.linear.Linear('Enc2.ConvToFC', input_dim=4*4*DIM_4, output_dim=DIM_5, inputs=output)
+    output = tf.nn.elu(output)
 
     # We implement an FC residual block as a conv over a 1x1 featuremap
-    output = tf.reshape(output, [-1, DIM_5, 1, 1])
-    output = ResidualBlock('Enc2.Res3', input_dim=DIM_5, output_dim=DIM_5, filter_size=1, inputs_stdev=np.sqrt(3), he_init=True, inputs=output)
-    output = tf.reshape(output, [-1, DIM_5])
+    # output = tf.reshape(output, [-1, DIM_5, 1, 1])
+    # output = ResidualBlock('Enc2.Res3', input_dim=DIM_5, output_dim=DIM_5, filter_size=1, inputs_stdev=np.sqrt(3), he_init=True, inputs=output)
+    # output = tf.reshape(output, [-1, DIM_5])
 
     output = lib.ops.linear.Linear('Enc2.Output', input_dim=DIM_5, output_dim=2*LATENT_DIM_2, inputs=output, initialization='glorot')
     return output
 
 def Dec2(latents, targets):
     output = tf.clip_by_value(latents, -50., 50.)
-    output = lib.ops.linear.Linear('Dec2.Input', input_dim=LATENT_DIM_2, output_dim=DIM_5, initialization='glorot', inputs=output)
+    output = lib.ops.linear.Linear('Dec2.Input', input_dim=LATENT_DIM_2, output_dim=DIM_5, inputs=output)
+    output = tf.nn.elu(output)
 
-    output = tf.reshape(output, [-1, DIM_5, 1, 1])
-    output = ResidualBlock('Dec2.Res1', input_dim=DIM_5, output_dim=DIM_5, filter_size=1, inputs_stdev=1, he_init=True, inputs=output)
-    output = tf.reshape(output, [-1, DIM_5])
+    # output = tf.reshape(output, [-1, DIM_5, 1, 1])
+    # output = ResidualBlock('Dec2.Res1', input_dim=DIM_5, output_dim=DIM_5, filter_size=1, inputs_stdev=1, he_init=True, inputs=output)
+    # output = tf.reshape(output, [-1, DIM_5])
 
-    output = lib.ops.linear.Linear('Dec2.FCToConv', input_dim=DIM_5, output_dim=4*4*DIM_4, initialization='glorot', inputs=output)
+    output = lib.ops.linear.Linear('Dec2.FCToConv', input_dim=DIM_5, output_dim=4*4*DIM_4, inputs=output)
+
     output = tf.reshape(output, [-1, DIM_4, 4, 4])
 
-    output = ResidualBlock('Dec2.Res2', input_dim=DIM_4, output_dim=DIM_4, filter_size=3, resample=None, inputs_stdev=np.sqrt(2), he_init=True, inputs=output)
+    # output = ResidualBlock('Dec2.Res2', input_dim=DIM_4, output_dim=DIM_4, filter_size=3, resample=None, inputs_stdev=np.sqrt(2), he_init=True, inputs=output)
     output = ResidualBlock('Dec2.Res3', input_dim=DIM_4, output_dim=DIM_3, filter_size=3, resample='up', inputs_stdev=np.sqrt(3), he_init=True, inputs=output)
 
     masked_targets = lib.ops.conv2d.Conv2D('Dec2.Pix1', input_dim=LATENT_DIM_1, output_dim=DIM_3, filter_size=7, mask_type=('a', PIX_2_N_BLOCKS), he_init=False, inputs=targets)
@@ -630,7 +634,7 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
     decayed_lr = tf.train.exponential_decay(
         LR,
         total_iters,
-        TIMES['stop_after']-10000,
+        TIMES['stop_after']*.95,
         1e-1,
         staircase=True
     )
