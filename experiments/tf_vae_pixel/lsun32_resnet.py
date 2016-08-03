@@ -600,10 +600,10 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
         ]
 
     decayed_lr = tf.train.exponential_decay(
-        LR, 
-        total_iters, 
-        150000, 
-        1e-1, 
+        LR,
+        total_iters,
+        TIMES['stop_after']*0.95,
+        1e-1,
         staircase=True
     )
 
