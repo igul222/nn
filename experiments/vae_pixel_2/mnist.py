@@ -43,7 +43,7 @@ lib.ops.deconv2d.enable_default_weightnorm()
 lib.ops.linear.enable_default_weightnorm()
 
 HUGO_TRAIN = False
-HUGO_TEST = False
+HUGO_TEST = True
 
 DIM_1 = 32
 DIM_2 = 32
