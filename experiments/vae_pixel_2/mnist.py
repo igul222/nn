@@ -15,6 +15,7 @@ except ImportError:
 import lib
 import lib.train_loop
 import lib.mnist_binarized
+import lib.mnist_binarized_hugo
 import lib.ops.mlp
 import lib.ops.conv_encoder
 import lib.ops.conv_decoder
@@ -41,6 +42,9 @@ lib.ops.conv2d.enable_default_weightnorm()
 lib.ops.deconv2d.enable_default_weightnorm()
 lib.ops.linear.enable_default_weightnorm()
 
+HUGO_TRAIN = False
+HUGO_TEST = False
+
 DIM_1 = 32
 DIM_2 = 32
 DIM_3 = 64
@@ -60,7 +64,7 @@ HEIGHT = 28
 WIDTH = 28
 
 TEST_BATCH_SIZE = 100
-TIMES = ('iters', 10*500, 2000*500, 10*500, 200*500, 2*ALPHA_ITERS)
+TIMES = ('iters', 10*500, 600*500, 10*500, 600*500, 600*500)
 
 lib.print_model_settings(locals().copy())
 
@@ -199,6 +203,15 @@ train_data, dev_data, test_data = lib.mnist_binarized.load(
     BATCH_SIZE, 
     TEST_BATCH_SIZE
 )
+
+hugo_train_data, hugo_dev_data, hugo_test_data = lib.mnist_binarized_hugo.load(
+    TEST_BATCH_SIZE
+)
+if HUGO_TRAIN:
+    train_data = hugo_train_data
+if HUGO_TEST:
+    dev_data = hugo_dev_data
+    test_data = hugo_test_data
 
 def generate_and_save_samples(tag):
 
