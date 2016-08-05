@@ -67,7 +67,7 @@ WIDTH = 28
 EXPNAME = '/data/lisatmp4/faruk/pixelvae/vae_only' + str(time.time()) + '/'
 
 TEST_BATCH_SIZE = 100
-TIMES = ('iters', 10*500, 600*500, 10*500, 100*500, 100*500)
+TIMES = ('iters', 10*50, 600*500, 10*50, 100*500, 100*500)
 
 lib.print_model_settings(locals().copy())
 
@@ -258,7 +258,7 @@ def generate_and_save_samples(tag):
     for j in xrange(HEIGHT):
         for k in xrange(WIDTH):
             for i in xrange(N_CHANNELS):
-                next_sample = binarize(sample_fn(latents, samples))
+                next_sample = binarize(sample_fn(latents))
                 samples[:, i, j, k] = next_sample[:, i, j, k]
 
     save_images(samples, EXPNAME + '/sample')
