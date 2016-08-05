@@ -198,7 +198,7 @@ else:
 
 sample_fn_latents = T.matrix('sample_fn_latents')
 sample_fn = theano.function(
-    [sample_fn_latents, images],
+    [sample_fn_latents],
     T.nnet.sigmoid(Decoder(sample_fn_latents))
 )
 
