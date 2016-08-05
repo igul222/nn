@@ -23,8 +23,10 @@ import tflib.ops.conv2d
 import tflib.ops.deconv2d
 import tflib.ops.linear
 import tflib.ops.batchnorm
+import tflib.ops.embedding
 
 import tflib.lsun_downsampled
+import tflib.mnist_256
 
 import numpy as np
 import tensorflow as tf
@@ -34,52 +36,115 @@ from scipy.misc import imsave
 import time
 import functools
 
-# two_level uses Enc1/Dec1 for the bottom level, Enc2/Dec2 for the top level
-# one_level uses EncFull/DecFull for the bottom (and only) level
-MODE = 'two_level'
+# mnist_256, lsun_downsampled
+DATASET = 'mnist_256'
 
-# Turn on/off the bottom-level PixelCNN in Dec1/DecFull
-PIXEL_LEVEL_PIXCNN = True
+if DATASET == 'mnist_256':
+    # two_level uses Enc1/Dec1 for the bottom level, Enc2/Dec2 for the top level
+    # one_level uses EncFull/DecFull for the bottom (and only) level
+    MODE = 'one_level'
 
-# These settings are good for a 'smaller' model that trains (up to 200K iters)
-# in ~1 day on a GTX 1080 (probably equivalent to 2 K40s).
-DIM_PIX_1    = 128
-DIM_1        = 64
-DIM_2        = 128
-DIM_3        = 256
-LATENT_DIM_1 = 64
-DIM_PIX_2    = 512
+    EMBED_INPUTS = True
 
-DIM_4        = 512
-DIM_5        = 2048
-LATENT_DIM_2 = 512
+    # Turn on/off the bottom-level PixelCNN in Dec1/DecFull
+    PIXEL_LEVEL_PIXCNN = False
 
-# In Dec2, we break each spatial location into N blocks (analogous to channels
-# in the original PixelCNN) and model each spatial location autoregressively
-# as P(x)=P(x0)*P(x1|x0)*P(x2|x0,x1)... In my experiments values of N > 1
-# actually hurt performance. Unsure why; might be a bug.
-PIX_2_N_BLOCKS = 1
+    # These settings are good for a 'smaller' model that trains (up to 200K iters)
+    # in ~1 day on a GTX 1080 (probably equivalent to 2 K40s).
+    DIM_PIX_1    = 32
+    DIM_1        = 16
+    DIM_2        = 32
+    DIM_3        = 32
+    # LATENT_DIM_1 = 32
+    # DIM_PIX_2    = 32
 
-TIMES = {
-    'mode': 'iters',
-    'print_every': 1000,
-    'stop_after': 200000,
-    'callback_every': 20000
-}
+    DIM_4        = 64
+    DIM_5        = 128
+    LATENT_DIM_2 = 2
 
-ALPHA1_ITERS = 5000
-ALPHA2_ITERS = 5000
-KL_PENALTY = 1.01
-SQUARE_ALPHA = False
-BETA_ITERS = 1000
+    # In Dec2, we break each spatial location into N blocks (analogous to channels
+    # in the original PixelCNN) and model each spatial location autoregressively
+    # as P(x)=P(x0)*P(x1|x0)*P(x2|x0,x1)... In my experiments values of N > 1
+    # actually hurt performance. Unsure why; might be a bug.
+    PIX_2_N_BLOCKS = 1
 
-VANILLA = False
-LR = 1e-3
+    TIMES = {
+        'mode': 'iters',
+        'print_every': 2*500,
+        'stop_after': 500*500,
+        'callback_every': 10*500
+    }
 
-BATCH_SIZE = 64
-N_CHANNELS = 3
-HEIGHT = 32
-WIDTH = 32
+    ALPHA1_ITERS = 10000
+    # ALPHA2_ITERS = 5000
+    KL_PENALTY = 1.05
+    BETA_ITERS = 1000
+
+    VANILLA = False
+    LR = 1e-3
+
+    BATCH_SIZE = 100
+    N_CHANNELS = 1
+    HEIGHT = 28
+    WIDTH = 28
+    LATENTS1_HEIGHT = 7
+    LATENTS1_WIDTH = 7
+
+    train_data, dev_data, test_data = lib.mnist_256.load(BATCH_SIZE, BATCH_SIZE)
+
+elif DATASET == 'lsun_downsampled':
+    # two_level uses Enc1/Dec1 for the bottom level, Enc2/Dec2 for the top level
+    # one_level uses EncFull/DecFull for the bottom (and only) level
+    MODE = 'two_level'
+
+    EMBED_INPUTS = False
+
+    # Turn on/off the bottom-level PixelCNN in Dec1/DecFull
+    PIXEL_LEVEL_PIXCNN = True
+
+    # These settings are good for a 'smaller' model that trains (up to 200K iters)
+    # in ~1 day on a GTX 1080 (probably equivalent to 2 K40s).
+    DIM_PIX_1    = 128
+    DIM_1        = 64
+    DIM_2        = 128
+    DIM_3        = 256
+    LATENT_DIM_1 = 64
+    DIM_PIX_2    = 512
+
+    DIM_4        = 512
+    DIM_5        = 2048
+    LATENT_DIM_2 = 512
+
+    # In Dec2, we break each spatial location into N blocks (analogous to channels
+    # in the original PixelCNN) and model each spatial location autoregressively
+    # as P(x)=P(x0)*P(x1|x0)*P(x2|x0,x1)... In my experiments values of N > 1
+    # actually hurt performance. Unsure why; might be a bug.
+    PIX_2_N_BLOCKS = 1
+
+    TIMES = {
+        'mode': 'iters',
+        'print_every': 1,
+        'stop_after': 200000,
+        'callback_every': 20000
+    }
+
+    ALPHA1_ITERS = 5000
+    ALPHA2_ITERS = 5000
+    KL_PENALTY = 1.01
+    SQUARE_ALPHA = False
+    BETA_ITERS = 1000
+
+    VANILLA = False
+    LR = 1e-3
+
+    BATCH_SIZE = 64
+    N_CHANNELS = 3
+    HEIGHT = 32
+    WIDTH = 32
+    LATENTS1_HEIGHT = 8
+    LATENTS1_WIDTH = 8
+
+    train_data, dev_data = lib.lsun_downsampled.load(BATCH_SIZE)
 
 lib.print_model_settings(locals().copy())
 
@@ -88,8 +153,6 @@ DEVICES = ['/gpu:{}'.format(i) for i in xrange(N_GPUS)]
 lib.ops.conv2d.enable_default_weightnorm()
 lib.ops.deconv2d.enable_default_weightnorm()
 lib.ops.linear.enable_default_weightnorm()
-
-train_data, dev_data = lib.lsun_downsampled.load(BATCH_SIZE)
 
 def nonlinearity(x):
     return tf.nn.elu(x)
@@ -223,6 +286,9 @@ def Dec2(latents, targets):
     output = ResidualBlock('Dec2.Res2', input_dim=DIM_4, output_dim=DIM_4, filter_size=3, resample=None, inputs_stdev=np.sqrt(2), he_init=True, inputs=output)
     output = ResidualBlock('Dec2.Res3', input_dim=DIM_4, output_dim=DIM_3, filter_size=3, resample='up', inputs_stdev=np.sqrt(3), he_init=True, inputs=output)
 
+    if WIDTH == 28:
+        output = tf.slice(output, [0, 0, 0, 0], [-1, -1, 7, 7])
+
     masked_targets = lib.ops.conv2d.Conv2D('Dec2.Pix1', input_dim=LATENT_DIM_1, output_dim=DIM_3, filter_size=7, mask_type=('a', PIX_2_N_BLOCKS), he_init=False, inputs=targets)
 
     # Make the stdev of output and masked_targets match
@@ -238,12 +304,16 @@ def Dec2(latents, targets):
 
 def EncFull(images):
     output = images
-    output = lib.ops.conv2d.Conv2D('EncFull.Input', input_dim=N_CHANNELS, output_dim=DIM_1, filter_size=1, inputs=output, he_init=False)
+
+    if EMBED_INPUTS:
+        output = lib.ops.conv2d.Conv2D('EncFull.Input', input_dim=N_CHANNELS*DIM_1, output_dim=DIM_1, filter_size=1, inputs=output, he_init=False)
+    else:
+        output = lib.ops.conv2d.Conv2D('EncFull.Input', input_dim=N_CHANNELS, output_dim=DIM_1, filter_size=1, inputs=output, he_init=False)
 
     output = ResidualBlock('EncFull.Res1', input_dim=DIM_1, output_dim=DIM_2, filter_size=3, resample='down', inputs_stdev=1,          inputs=output)
     output = ResidualBlock('EncFull.Res2', input_dim=DIM_2, output_dim=DIM_3, filter_size=3, resample='down', inputs_stdev=np.sqrt(2), inputs=output)
     output = ResidualBlock('EncFull.Res3', input_dim=DIM_3, output_dim=DIM_4, filter_size=3, resample='down', inputs_stdev=np.sqrt(3), inputs=output)
-    output = ResidualBlock('EncFull.Res4', input_dim=DIM_4, output_dim=DIM_4, filter_size=3, resample=None,   inputs_stdev=np.sqrt(4), inputs=output)
+    # output = ResidualBlock('EncFull.Res4', input_dim=DIM_4, output_dim=DIM_4, filter_size=3, resample=None,   inputs_stdev=np.sqrt(4), inputs=output)
 
     output = tf.reshape(output, [-1, 4*4*DIM_4])
     output = lib.ops.linear.Linear('EncFull.ConvToFC', input_dim=4*4*DIM_4, output_dim=DIM_5, initialization='glorot', inputs=output)
@@ -258,6 +328,7 @@ def EncFull(images):
 
 def DecFull(latents, images):
     output = tf.clip_by_value(latents, -50., 50.)
+
     output = lib.ops.linear.Linear('DecFull.Input', input_dim=LATENT_DIM_2, output_dim=DIM_5, initialization='glorot', inputs=output)
 
     output = tf.reshape(output, [-1, DIM_5, 1, 1])
@@ -267,23 +338,37 @@ def DecFull(latents, images):
     output = lib.ops.linear.Linear('DecFull.FCToConv', input_dim=DIM_5, output_dim=4*4*DIM_4, initialization='glorot', inputs=output)
     output = tf.reshape(output, [-1, DIM_4, 4, 4])
 
-    output = ResidualBlock('DecFull.Res2', input_dim=DIM_4, output_dim=DIM_4, filter_size=3, resample=None, inputs_stdev=np.sqrt(2), he_init=True, inputs=output)
+    # output = ResidualBlock('DecFull.Res2', input_dim=DIM_4, output_dim=DIM_4, filter_size=3, resample=None, inputs_stdev=np.sqrt(2), he_init=True, inputs=output)
     output = ResidualBlock('DecFull.Res3', input_dim=DIM_4, output_dim=DIM_3, filter_size=3, resample='up', inputs_stdev=np.sqrt(3), he_init=True, inputs=output)
+
+    if WIDTH == 28:
+        output = tf.slice(output, [0, 0, 0, 0], [-1, -1, 7, 7])
+
     output = ResidualBlock('DecFull.Res4', input_dim=DIM_3, output_dim=DIM_2, filter_size=3, resample='up', inputs_stdev=np.sqrt(4), he_init=True, inputs=output)
     output = ResidualBlock('DecFull.Res5', input_dim=DIM_2, output_dim=DIM_1, filter_size=3, resample='up', inputs_stdev=np.sqrt(5), he_init=True, inputs=output)
 
+    # position-invariant latent projection
+    # output = lib.ops.linear.Linear('DecFull.Input', input_dim=LATENT_DIM_2, output_dim=DIM_1, initialization='glorot', inputs=output)
+    # output = tf.tile(output, [1, HEIGHT*WIDTH])
+    # output = tf.reshape(output, [-1, DIM_1, HEIGHT, WIDTH])
+
     if PIXEL_LEVEL_PIXCNN:
 
-        masked_images = lib.ops.conv2d.Conv2D('DecFull.Pix1', input_dim=N_CHANNELS, output_dim=DIM_1, filter_size=5, inputs=images, mask_type=('a', N_CHANNELS), he_init=False)
+        if EMBED_INPUTS:
+            masked_images = lib.ops.conv2d.Conv2D('DecFull.Pix1', input_dim=N_CHANNELS*DIM_1, output_dim=DIM_1, filter_size=7, inputs=images, mask_type=('a', N_CHANNELS), he_init=False)
+        else:
+            masked_images = lib.ops.conv2d.Conv2D('DecFull.Pix1', input_dim=N_CHANNELS, output_dim=DIM_1, filter_size=7, inputs=images, mask_type=('a', N_CHANNELS), he_init=False)
 
         # Make the stdev of output and masked_images match
-        output /= np.sqrt(6)
+        # output /= np.sqrt(6)
 
         # Warning! Because of the masked convolutions it's very important that masked_images comes first in this concat
         output = tf.concat(1, [masked_images, output])
 
-        output = ResidualBlock('Dec1.Pix2Res', input_dim=2*DIM_1,   output_dim=DIM_PIX_1, filter_size=3, mask_type=('b', N_CHANNELS), inputs_stdev=1,          inputs=output)
-        output = ResidualBlock('Dec1.Pix3Res', input_dim=DIM_PIX_1, output_dim=DIM_PIX_1, filter_size=1, mask_type=('b', N_CHANNELS), inputs_stdev=np.sqrt(2), inputs=output)
+        output = ResidualBlock('DecFull.Pix2Res', input_dim=2*DIM_1,   output_dim=DIM_PIX_1, filter_size=5, mask_type=('b', N_CHANNELS), inputs_stdev=1,          inputs=output)
+        # output = ResidualBlock('DecFull.Pix3Res', input_dim=DIM_PIX_1, output_dim=DIM_PIX_1, filter_size=5, mask_type=('b', N_CHANNELS), inputs_stdev=1,          inputs=output)
+        # output = ResidualBlock('DecFull.Pix4Res', input_dim=DIM_PIX_1, output_dim=DIM_PIX_1, filter_size=5, mask_type=('b', N_CHANNELS), inputs_stdev=1,          inputs=output)
+        output = ResidualBlock('DecFull.Pix5Res', input_dim=DIM_PIX_1, output_dim=DIM_PIX_1, filter_size=1, mask_type=('b', N_CHANNELS), inputs_stdev=np.sqrt(2), inputs=output)
 
         output = lib.ops.conv2d.Conv2D('Dec1.Out', input_dim=DIM_PIX_1, output_dim=256*N_CHANNELS, filter_size=1, mask_type=('b', N_CHANNELS), he_init=False, inputs=output)
 
@@ -298,7 +383,7 @@ def DecFull(latents, images):
 
 with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
     total_iters = tf.placeholder(tf.int32, shape=None, name='total_iters')
-    all_images = tf.placeholder(tf.int32, shape=[None, 3, 32, 32], name='all_images')
+    all_images = tf.placeholder(tf.int32, shape=[None, N_CHANNELS, HEIGHT, WIDTH], name='all_images')
 
     def split(mu_and_logsig):
         mu, logsig = tf.split(1, 2, mu_and_logsig)
@@ -319,12 +404,19 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
         with tf.device(device):
 
             scaled_images = (tf.cast(images, 'float32') - 128.) / 64.
+            if EMBED_INPUTS:
+                embedded_images = lib.ops.embedding.Embedding('Embedding', 256, DIM_1, images)
+                embedded_images = tf.transpose(embedded_images, [0,4,1,2,3])
+                embedded_images = tf.reshape(embedded_images, [-1, N_CHANNELS*DIM_1, HEIGHT, WIDTH])
 
             if MODE == 'one_level':
 
                 # Layer 1
 
-                mu_and_logsig1 = EncFull(scaled_images)
+                if EMBED_INPUTS:
+                    mu_and_logsig1 = EncFull(embedded_images)
+                else:
+                    mu_and_logsig1 = EncFull(scaled_images)
                 mu1, logsig1, sig1 = split(mu_and_logsig1)
 
                 if VANILLA:
@@ -333,7 +425,10 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
                     eps = tf.random_normal(tf.shape(mu1))
                     latents1 = mu1 + (eps * sig1)
 
-                outputs1 = DecFull(latents1, scaled_images)
+                if EMBED_INPUTS:
+                    outputs1 = DecFull(latents1, embedded_images)
+                else:
+                    outputs1 = DecFull(latents1, scaled_images)
 
                 reconst_cost = tf.reduce_mean(
                     tf.nn.sparse_softmax_cross_entropy_with_logits(
@@ -346,9 +441,7 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
 
                 # An alpha of exactly 0 can sometimes cause inf/nan values, so we're
                 # careful to avoid it.
-                alpha = tf.minimum(1., tf.cast(total_iters+1, 'float32') / ALPHA_ITERS)
-                if SQUARE_ALPHA:
-                    alpha = alpha**2
+                alpha = tf.minimum(1., tf.cast(total_iters+1, 'float32') / ALPHA1_ITERS) * KL_PENALTY
 
                 kl_cost_1 = tf.reduce_mean(
                     lib.ops.kl_unit_gaussian.kl_unit_gaussian(
@@ -430,7 +523,7 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
                     )
                 )
 
-                kl_cost_1 *= float(LATENT_DIM_1*8*8) / (N_CHANNELS * WIDTH * HEIGHT)
+                kl_cost_1 *= float(LATENT_DIM_1*LATENTS1_HEIGHT*LATENTS1_WIDTH) / (N_CHANNELS * WIDTH * HEIGHT)
                 kl_cost_2 *= float(LATENT_DIM_2)     / (N_CHANNELS * WIDTH * HEIGHT)
 
                 if VANILLA:
@@ -460,7 +553,6 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
             return session.run(latents1, feed_dict={images: _images, total_iters: 99999})
 
         sample_fn_latents1 = np.random.normal(size=(8, LATENT_DIM_2)).astype('float32')
-        dev_images = dev_data().next()[0]
 
         def generate_and_save_samples(tag):
             def color_grid_vis(X, nh, nw, save_path):
@@ -475,10 +567,6 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
                 imsave(save_path, img)
 
             print "Generating latents1"
-
-            r_latents1 = enc_fn(dev_images)
-            for i in xrange(4):
-                sample_fn_latents1[i] = r_latents1[i]
 
             latents1_copied = np.zeros((64, LATENT_DIM_2), dtype='float32')
             for i in xrange(8):
@@ -495,8 +583,6 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
                     for ch in xrange(N_CHANNELS):
                         next_sample = dec1_fn(latents1_copied, samples, ch, y, x)
                         samples[:,ch,y,x] = next_sample
-
-            samples[:32:8] = dev_images[:4]
 
             print "Saving samples"
             color_grid_vis(
@@ -615,9 +701,33 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
         prints=prints,
         optimizer=tf.train.AdamOptimizer(decayed_lr),
         train_data=train_data,
-        # test_data=dev_data,
+        test_data=dev_data,
         callback=generate_and_save_samples,
         times=TIMES,
+        save_params=True,
         # profile=True
         # debug_mode=True
     )
+
+    # tf.train.Saver().restore(session, "/home/ishaan/experiments/resnet_mnist256_latentDim2_noPix_1470350613/params_iters100000_time7665.89819646.ckpt")
+    # print "Model restored."
+
+    # all_zs = []
+    # targets = []
+    # for (_images,_targets) in test_data():
+    #     _z = enc_fn(_images)
+    #     all_zs.append(_z)
+    #     targets.append(_targets)
+    # _z = np.concatenate(all_zs, axis=0)
+    # targets = np.concatenate(targets, axis=0)
+    # import matplotlib
+    # matplotlib.use('Agg')
+    # import matplotlib.pyplot as plt
+    # x, y = _z.T
+    # # x = np.random.rand(N)
+    # # y = np.random.rand(N)
+    # colors = targets
+    # print colors[:50]
+    # area = 5 #np.pi * (15 * np.random.rand(N))**2  # 0 to 15 point radiuses
+    # plt.scatter(x, y, s=area, c=colors, alpha=0.5)
+    # plt.savefig('plot.png')
