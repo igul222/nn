@@ -51,7 +51,7 @@ DIM_3 = 64
 DIM_4 = 64
 DIM_PIX = 32
 PIXEL_CNN_FILTER_SIZE = 5
-PIXEL_CNN_LAYERS = 6
+PIXEL_CNN_LAYERS = 4
 
 LATENT_DIM = 64
 ALPHA_ITERS = 10000
@@ -64,7 +64,7 @@ HEIGHT = 28
 WIDTH = 28
 
 TEST_BATCH_SIZE = 100
-TIMES = ('iters', 10*500, 600*500, 10*500, 600*500, 600*500)
+TIMES = ('iters', 3*500, 100*500, 3*500, 600*500, 600*500)
 
 lib.print_model_settings(locals().copy())
 
@@ -140,8 +140,11 @@ def Decoder(latents, images):
         output = PixCNNGate(lib.ops.conv2d.Conv2D('Dec.Pix'+str(i), input_dim=inp_dim, output_dim=2*DIM_1, filter_size=PIXEL_CNN_FILTER_SIZE, inputs=output, mask_type=('b', N_CHANNELS)))
         # output = lib.ops.relu.relu(lib.ops.conv2d.Conv2D('Dec.Pix'+str(i), input_dim=inp_dim, output_dim=DIM_PIX, filter_size=PIXEL_CNN_FILTER_SIZE, inputs=output, mask_type=('b', N_CHANNELS)))
         skip_outputs.append(output)
-    
-    output = PixCNNGate(lib.ops.conv2d.Conv2D('Dec.PixOut1', input_dim=DIM_1, output_dim=2*DIM_1, filter_size=1, inputs=output))
+
+    if PIXEL_CNN_LAYERS == 0:
+        output = PixCNNGate(lib.ops.conv2d.Conv2D('Dec.PixOut1', input_dim=2*DIM_1, output_dim=2*DIM_1, filter_size=1, inputs=output))
+    else:
+        output = PixCNNGate(lib.ops.conv2d.Conv2D('Dec.PixOut1', input_dim=DIM_1, output_dim=2*DIM_1, filter_size=1, inputs=output))
     # output = lib.ops.relu.relu(lib.ops.conv2d.Conv2D('Dec.PixOut1', input_dim=DIM_PIX, output_dim=DIM_PIX, filter_size=1, inputs=output))
     skip_outputs.append(output)
 
