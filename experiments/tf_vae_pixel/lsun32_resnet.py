@@ -6,7 +6,7 @@ Ishaan Gulrajani
 import os, sys
 sys.path.append(os.getcwd())
 
-N_GPUS = 1
+N_GPUS = 2
 
 try: # This only matters on Ishaan's computer
     import experiment_tools
@@ -638,6 +638,7 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
         # test_data=dev_data,
         callback=generate_and_save_samples,
         times=TIMES,
+        save_params=True,
         # profile=True
         # debug_mode=True
     )

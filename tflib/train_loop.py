@@ -27,6 +27,7 @@ def train_loop(
     save_params=False,
     profile=False
     ):
+    saver = tf.train.Saver()
 
     prints = [('cost', cost)] + prints
 
@@ -184,7 +185,9 @@ def train_loop(
                         callback(tag)
 
                     if save_params:
-                        lib.save_params('params_{}.pkl'.format(tag))
+                        path = "params_{}.ckpt".format(tag)
+                        saver.save(session, path)
+                        print "Saved params to {}".format(path)
 
                     last_gen += times['callback_every']
 
