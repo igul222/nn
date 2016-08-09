@@ -14,7 +14,7 @@ except ImportError:
     pass
 
 import lib
-import lib.train_loop
+import train_loop
 import lib.mnist_binarized_avec_targets
 import lib.ops.mlp
 import lib.ops.conv_encoder
@@ -232,7 +232,7 @@ def generate_and_save_samples(tag):
     all_labels.dump(SAVE_PATH + 'labels_{}.dat'.format(tag))
 
 
-lib.train_loop.train_loop(
+train_loop.train_loop(
     inputs=[total_iters, images],
     inject_total_iters=True,
     cost=cost,
