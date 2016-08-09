@@ -545,142 +545,8 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
         tf.concat(0, [tf.expand_dims(x, 0) for x in tower_cost]), 0
     )
 
-    # Sampling
 
-    if MODE == 'one_level':
-
-        ch_sym = tf.placeholder(tf.int32, shape=None)
-        y_sym = tf.placeholder(tf.int32, shape=None)
-        x_sym = tf.placeholder(tf.int32, shape=None)
-        logits = tf.reshape(tf.slice(outputs1, tf.pack([0, ch_sym, y_sym, x_sym, 0]), tf.pack([-1, 1, 1, 1, -1])), [-1, 256])
-        dec1_fn_out = tf.multinomial(logits, 1)[:, 0]
-
-        def dec1_fn(_latents, _targets, _ch, _y, _x):
-            return session.run(dec1_fn_out, feed_dict={latents1: _latents, images: _targets, ch_sym: _ch, y_sym: _y, x_sym: _x, total_iters: 99999})
-
-        def enc_fn(_images):
-            return session.run(latents1, feed_dict={images: _images, total_iters: 99999})
-
-
-        def generate_and_save_samples(tag):
-            def color_grid_vis(X, nh, nw, save_path):
-                # from github.com/Newmu
-                X = X.transpose(0,2,3,1)
-                h, w = X[0].shape[:2]
-                img = np.zeros((h*nh, w*nw, 3))
-                for n, x in enumerate(X):
-                    j = n/nw
-                    i = n%nw
-                    img[j*h:j*h+h, i*w:i*w+w, :] = x
-                imsave(save_path, img)
-
-            print "Generating latents1"
-
-            latents1_copied = np.zeros((64, LATENT_DIM_2), dtype='float32')
-            for i in xrange(8):
-                latents1_copied[i::8] = sample_fn_latents1
-
-            samples = np.zeros(
-                (64, N_CHANNELS, HEIGHT, WIDTH), 
-                dtype='int32'
-            )
-
-            print "Generating samples"
-            for y in xrange(HEIGHT):
-                for x in xrange(WIDTH):
-                    for ch in xrange(N_CHANNELS):
-                        next_sample = dec1_fn(latents1_copied, samples, ch, y, x)
-                        samples[:,ch,y,x] = next_sample
-
-            print "Saving samples"
-            color_grid_vis(
-                samples, 
-                8, 
-                8, 
-                'samples_{}.png'.format(tag)
-            )
-
-
-    elif MODE == 'two_level':
-
-        def dec2_fn(_latents, _targets):
-            return session.run([mu1_prior, logsig1_prior], feed_dict={latents2: _latents, latents1: _targets, total_iters: 99999})
-
-        ch_sym = tf.placeholder(tf.int32, shape=None)
-        y_sym = tf.placeholder(tf.int32, shape=None)
-        x_sym = tf.placeholder(tf.int32, shape=None)
-        logits = tf.reshape(tf.slice(outputs1, tf.pack([0, ch_sym, y_sym, x_sym, 0]), tf.pack([-1, 1, 1, 1, -1])), [-1, 256])
-        dec1_fn_out = tf.multinomial(logits, 1)[:, 0]
-        def dec1_fn(_latents, _targets, _ch, _y, _x):
-            return session.run(dec1_fn_out, feed_dict={latents1: _latents, images: _targets, ch_sym: _ch, y_sym: _y, x_sym: _x, total_iters: 99999})
-
-        def enc_fn(_images):
-            return session.run([latents1, latents2], feed_dict={images: _images, total_iters: 99999})
-
-        def mus_fn(_images):
-            return session.run(mu1, feed_dict={images: _images, total_iters: 99999})
-
-        sample_fn_latents1 = np.random.normal(size=(8, LATENT_DIM_2)).astype('float32')
-        sample_fn_latents2 = np.random.normal(size=(32, LATENT_DIM_2)).astype('float32')
-        sample_fn_latents2[1::2] = sample_fn_latents2[0::2]
-        sample_fn_latent1_randn = np.random.normal(size=(8,8,32,LATENT_DIM_1))
-
-        def generate_and_save_samples(tag):
-            def color_grid_vis(X, nh, nw, save_path):
-                # from github.com/Newmu
-                X = X.transpose(0,2,3,1)
-                h, w = X[0].shape[:2]
-                img = np.zeros((h*nh, w*nw, 3))
-                for n, x in enumerate(X):
-                    j = n/nw
-                    i = n%nw
-                    img[j*h:j*h+h, i*w:i*w+w, :] = x
-                imsave(save_path, img)
-
-            print "Generating latents1"
-
-            latents1 = np.zeros(
-                (32, LATENT_DIM_1, 8, 8),
-                dtype='float32'
-            )
-
-            for y in xrange(8):
-                for x in xrange(8):
-                    for block in xrange(PIX_2_N_BLOCKS):
-                        mu, logsig = dec2_fn(sample_fn_latents2, latents1)
-                        mu = mu[:,:,y,x]
-                        logsig = logsig[:,:,y,x]
-                        z = mu + ( np.exp(logsig) * sample_fn_latent1_randn[y,x] )
-                        latents1[:,block::PIX_2_N_BLOCKS,y,x] = z[:,block::PIX_2_N_BLOCKS]
-
-            latents1_copied = np.zeros(
-                (64, LATENT_DIM_1, 8, 8),
-                dtype='float32'
-            )
-            latents1_copied[0::2] = latents1
-            latents1_copied[1::2] = latents1
-
-            samples = np.zeros(
-                (64, N_CHANNELS, HEIGHT, WIDTH), 
-                dtype='int32'
-            )
-
-            print "Generating samples"
-            for y in xrange(HEIGHT):
-                for x in xrange(WIDTH):
-                    for ch in xrange(N_CHANNELS):
-                        next_sample = dec1_fn(latents1_copied, samples, ch, y, x)
-                        samples[:,ch,y,x] = next_sample
-
-            print "Saving samples"
-            color_grid_vis(
-                samples,
-                8,
-                8,
-                'samples_{}.png'.format(tag)
-            )
-
-
+    ###################################################################################################################################
     modelname = 'resnet_lsun_alphaIters1K_alpha1.01_savedweights_1470600017_params_iters200000_time45606.0666909'
 
     tf.train.Saver().restore(session, '/u/ahmedfar/' + modelname + '.ckpt')
@@ -690,36 +556,59 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
     if not os.path.exists(plotsavedir):
         os.makedirs(plotsavedir)
 
+    ch_sym = tf.placeholder(tf.int32, shape=None)
+    y_sym = tf.placeholder(tf.int32, shape=None)
+    x_sym = tf.placeholder(tf.int32, shape=None)
+    logits = tf.reshape(tf.slice(outputs1, tf.pack([0, ch_sym, y_sym, x_sym, 0]), tf.pack([-1, 1, 1, 1, -1])), [-1, 256])
+    dec1_fn_out = tf.multinomial(logits, 1)[:, 0]
+
+    def dec1_fn(_latents, _targets, _ch, _y, _x):
+        return session.run(dec1_fn_out, feed_dict={latents1: _latents, images: _targets, ch_sym: _ch, y_sym: _y, x_sym: _x, total_iters: 99999})
+
     def mus_fn(_images):
-        return session.run(mu1, feed_dict={images: _images, total_iters: 99999})
+        return session.run(mu1, feed_dict={images: _images, total_iters: 999999})
 
     def sigmas_fn(_images):
-        return session.run(sig1, feed_dict={images: _images, total_iters: 99999})
+        return session.run(sig1, feed_dict={images: _images, total_iters: 999999})
 
     def reconstruct(_images):
         latent_mu = mus_fn(_images)
         reconstructions = session.run(outputs1, feed_dict={images: _images, latents1: latent_mu, total_iters: 999999})
         return reconstructions
 
+    def sample_reconstruction(samples, latents1):
+        for y in xrange(HEIGHT):
+            for x in xrange(WIDTH):
+                for ch in xrange(N_CHANNELS):
+                    next_sample = dec1_fn(latents1, samples, ch, y, x)
+                    samples[:,ch,y,x] = next_sample
+        return samples
+
+
     dev_gen = dev_data()
-    NUM_VIZ_BATCHES = 10
-    original_imgs = np.empty((BATCH_SIZE*NUM_VIZ_BATCHES, 3, 32, 32))
+    NUM_VIZ_BATCHES = 1
+    original_images = np.empty((BATCH_SIZE*NUM_VIZ_BATCHES, 3, 32, 32))
     _images = np.empty((BATCH_SIZE*NUM_VIZ_BATCHES, 3, 32, 32))
     for dev_i in xrange(NUM_VIZ_BATCHES):
         batch_of_data = dev_gen.next()[0]
         _images[dev_i*BATCH_SIZE:(dev_i+1)*BATCH_SIZE, :, :, :] = (batch_of_data - 128.)/64.
-        original_imgs[dev_i*BATCH_SIZE:(dev_i+1)*BATCH_SIZE, :, :, :] = batch_of_data
+        original_images[dev_i*BATCH_SIZE:(dev_i+1)*BATCH_SIZE, :, :, :] = batch_of_data
 
     mus = mus_fn(_images)
     sigmas = sigmas_fn(_images)
-    reconstructions = np.max(reconstruct(_images), axis = 4)
+
+    #reconstructions = np.max(reconstruct(_images), axis = 4)
+
+    print 'sampling reconstructions'
+    copy_of_images = np.copy(original_images)
+    reconstructions = sample_reconstruction(copy_of_images, mus)
 
     for test_i in xrange(NUM_VIZ_BATCHES*BATCH_SIZE):
         print test_i
         grid_of_mus = np.zeros((8*8 + 9*2, 8*8 + 9*2))
         grid_of_sigmas = np.zeros((8*8 + 9*2, 8*8 + 9*2))
 
-        bedroom = np.rollaxis(original_imgs[test_i], 0, 3)/255.
+        bedroom = np.rollaxis(original_images[test_i], 0, 3)/255.
         reconstructed_bedroom = np.rollaxis(reconstructions[test_i], 0, 3)
         for test_i_feat_r in xrange(8):
             for test_i_feat_c in xrange(8):
@@ -748,4 +637,6 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
         plt.show()
         plt.savefig(plotsavedir + '{}.png'.format(test_i))
         plt.close()
+
+    ###############################################################################################################################################
 
