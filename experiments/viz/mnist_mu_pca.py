@@ -66,7 +66,9 @@ WIDTH = 28
 TEST_BATCH_SIZE = 100
 TIMES = ('iters', 1*500, 600*500, 1*500, 9999999, 9999999)
 
-VIZ_SAVE_PATH = '/data/lisatmp4/faruk/pixelvae/mnist_pixvae_pca/'
+VIZ_SAVE_PATH = '/data/lisatmp4/faruk/pixelvae/mnist_pixvae_pca/LAYERS' + str(PIXEL_CNN_LAYERS) + '_LATENTDIM' + str(LATENT_DIM) + '/'
+
+if not os.path.exists(VIZ_SAVE_PATH): os.makedirs(VIZ_SAVE_PATH)
 
 lib.print_model_settings(locals().copy())
 
