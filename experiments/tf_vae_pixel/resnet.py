@@ -37,7 +37,7 @@ import time
 import functools
 
 # mnist_256, lsun_downsampled
-DATASET = 'mnist_256'
+DATASET = 'lsun_downsampled'
 
 if DATASET == 'mnist_256':
     # two_level uses Enc1/Dec1 for the bottom level, Enc2/Dec2 for the top level
@@ -47,7 +47,8 @@ if DATASET == 'mnist_256':
     EMBED_INPUTS = True
 
     # Turn on/off the bottom-level PixelCNN in Dec1/DecFull
-    PIXEL_LEVEL_PIXCNN = False
+    PIXEL_LEVEL_PIXCNN = True
+    HIGHER_LEVEL_PIXCNN = True
 
     # These settings are good for a 'smaller' model that trains (up to 200K iters)
     # in ~1 day on a GTX 1080 (probably equivalent to 2 K40s).
@@ -101,6 +102,7 @@ elif DATASET == 'lsun_downsampled':
 
     # Turn on/off the bottom-level PixelCNN in Dec1/DecFull
     PIXEL_LEVEL_PIXCNN = True
+    HIGHER_LEVEL_PIXCNN = True
 
     # These settings are good for a 'smaller' model that trains (up to 200K iters)
     # in ~1 day on a GTX 1080 (probably equivalent to 2 K40s).
@@ -123,14 +125,14 @@ elif DATASET == 'lsun_downsampled':
 
     TIMES = {
         'mode': 'iters',
-        'print_every': 1,
+        'print_every': 1000,
         'stop_after': 200000,
         'callback_every': 20000
     }
 
     ALPHA1_ITERS = 5000
     ALPHA2_ITERS = 5000
-    KL_PENALTY = 1.01
+    KL_PENALTY = 1.00
     SQUARE_ALPHA = False
     BETA_ITERS = 1000
 
@@ -289,17 +291,23 @@ def Dec2(latents, targets):
     if WIDTH == 28:
         output = tf.slice(output, [0, 0, 0, 0], [-1, -1, 7, 7])
 
-    masked_targets = lib.ops.conv2d.Conv2D('Dec2.Pix1', input_dim=LATENT_DIM_1, output_dim=DIM_3, filter_size=7, mask_type=('a', PIX_2_N_BLOCKS), he_init=False, inputs=targets)
+    if HIGHER_LEVEL_PIXCNN:
 
-    # Make the stdev of output and masked_targets match
-    output /= np.sqrt(4)
+        masked_targets = lib.ops.conv2d.Conv2D('Dec2.Pix1', input_dim=LATENT_DIM_1, output_dim=DIM_3, filter_size=7, mask_type=('a', PIX_2_N_BLOCKS), he_init=False, inputs=targets)
 
-    output = tf.concat(1, [masked_targets, output])
+        # Make the stdev of output and masked_targets match
+        output /= np.sqrt(4)
 
-    output = ResidualBlock('Dec2.Pix2Res', input_dim=2*DIM_3, output_dim=DIM_PIX_2, filter_size=3, mask_type=('b', PIX_2_N_BLOCKS), inputs_stdev=1, he_init=True, inputs=output)
-    output = ResidualBlock('Dec2.Pix3Res', input_dim=DIM_PIX_2, output_dim=DIM_PIX_2, filter_size=1, mask_type=('b', PIX_2_N_BLOCKS), inputs_stdev=np.sqrt(2), he_init=True, inputs=output)
+        output = tf.concat(1, [masked_targets, output])
 
-    output = lib.ops.conv2d.Conv2D('Dec2.Out', input_dim=DIM_PIX_2, output_dim=2*LATENT_DIM_1, filter_size=1, mask_type=('b', PIX_2_N_BLOCKS), he_init=False, inputs=output)
+        output = ResidualBlock('Dec2.Pix2Res', input_dim=2*DIM_3, output_dim=DIM_PIX_2, filter_size=3, mask_type=('b', PIX_2_N_BLOCKS), inputs_stdev=1, he_init=True, inputs=output)
+        output = ResidualBlock('Dec2.Pix3Res', input_dim=DIM_PIX_2, output_dim=DIM_PIX_2, filter_size=1, mask_type=('b', PIX_2_N_BLOCKS), inputs_stdev=np.sqrt(2), he_init=True, inputs=output)
+
+        output = lib.ops.conv2d.Conv2D('Dec2.Out', input_dim=DIM_PIX_2, output_dim=2*LATENT_DIM_1, filter_size=1, mask_type=('b', PIX_2_N_BLOCKS), he_init=False, inputs=output)
+    else:
+
+        output = lib.ops.conv2d.Conv2D('Dec2.Out', input_dim=DIM_3, output_dim=2*LATENT_DIM_1, filter_size=1, mask_type=('b', PIX_2_N_BLOCKS), he_init=False, inputs=output)
+
     return output
 
 def EncFull(images):
