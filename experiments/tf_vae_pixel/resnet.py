@@ -63,6 +63,11 @@ if DATASET == 'mnist_256':
     DIM_5        = 128
     LATENT_DIM_2 = 2
 
+    ALPHA1_ITERS = 10000
+    # ALPHA2_ITERS = 5000
+    KL_PENALTY = 1.05
+    BETA_ITERS = 1000
+
     # In Dec2, we break each spatial location into N blocks (analogous to channels
     # in the original PixelCNN) and model each spatial location autoregressively
     # as P(x)=P(x0)*P(x1|x0)*P(x2|x0,x1)... In my experiments values of N > 1
@@ -75,11 +80,6 @@ if DATASET == 'mnist_256':
         'stop_after': 500*500,
         'callback_every': 10*500
     }
-
-    ALPHA1_ITERS = 10000
-    # ALPHA2_ITERS = 5000
-    KL_PENALTY = 1.05
-    BETA_ITERS = 1000
 
     VANILLA = False
     LR = 1e-3
@@ -117,6 +117,12 @@ elif DATASET == 'lsun_downsampled':
     DIM_5        = 2048
     LATENT_DIM_2 = 512
 
+    ALPHA1_ITERS = 5000
+    ALPHA2_ITERS = 5000
+    KL_PENALTY = 1.00
+    SQUARE_ALPHA = False
+    BETA_ITERS = 1000
+
     # In Dec2, we break each spatial location into N blocks (analogous to channels
     # in the original PixelCNN) and model each spatial location autoregressively
     # as P(x)=P(x0)*P(x1|x0)*P(x2|x0,x1)... In my experiments values of N > 1
@@ -129,12 +135,6 @@ elif DATASET == 'lsun_downsampled':
         'stop_after': 200000,
         'callback_every': 20000
     }
-
-    ALPHA1_ITERS = 5000
-    ALPHA2_ITERS = 5000
-    KL_PENALTY = 1.00
-    SQUARE_ALPHA = False
-    BETA_ITERS = 1000
 
     VANILLA = False
     LR = 1e-3
