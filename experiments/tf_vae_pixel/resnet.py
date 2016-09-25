@@ -36,10 +36,11 @@ from scipy.misc import imsave
 import time
 import functools
 
-# mnist_256, lsun_downsampled
-DATASET = 'lsun_downsampled'
 
-if DATASET == 'mnist_256':
+DATASET = 'mnist_256' # mnist_256, lsun_downsampled
+SETTINGS = '32px_small' # mnist_256, 32px_small, 32px_big
+
+if SETTINGS == 'mnist_256':
     # two_level uses Enc1/Dec1 for the bottom level, Enc2/Dec2 for the top level
     # one_level uses EncFull/DecFull for the bottom (and only) level
     MODE = 'one_level'
@@ -84,6 +85,11 @@ if DATASET == 'mnist_256':
     VANILLA = False
     LR = 1e-3
 
+
+    LR_DECAY_AFTER = TIMES['stop_after']
+    LR_DECAY_FACTOR = 1.
+
+
     BATCH_SIZE = 100
     N_CHANNELS = 1
     HEIGHT = 28
@@ -91,9 +97,7 @@ if DATASET == 'mnist_256':
     LATENTS1_HEIGHT = 7
     LATENTS1_WIDTH = 7
 
-    train_data, dev_data, test_data = lib.mnist_256.load(BATCH_SIZE, BATCH_SIZE)
-
-elif DATASET == 'lsun_downsampled':
+elif SETTINGS == '32px_small':
     # two_level uses Enc1/Dec1 for the bottom level, Enc2/Dec2 for the top level
     # one_level uses EncFull/DecFull for the bottom (and only) level
     MODE = 'two_level'
@@ -139,6 +143,9 @@ elif DATASET == 'lsun_downsampled':
     VANILLA = False
     LR = 1e-3
 
+    LR_DECAY_AFTER = 180000
+    LR_DECAY_FACTOR = 1e-1
+
     BATCH_SIZE = 64
     N_CHANNELS = 3
     HEIGHT = 32
@@ -146,6 +153,67 @@ elif DATASET == 'lsun_downsampled':
     LATENTS1_HEIGHT = 8
     LATENTS1_WIDTH = 8
 
+elif SETTINGS == '32px_big':
+
+    # two_level uses Enc1/Dec1 for the bottom level, Enc2/Dec2 for the top level
+    # one_level uses EncFull/DecFull for the bottom (and only) level
+    MODE = 'two_level'
+
+    EMBED_INPUTS = False
+
+    # Turn on/off the bottom-level PixelCNN in Dec1/DecFull
+    PIXEL_LEVEL_PIXCNN = True
+    HIGHER_LEVEL_PIXCNN = True
+
+    # These settings are good for a 'smaller' model that trains (up to 200K iters)
+    # in ~1 day on a GTX 1080 (probably equivalent to 2 K40s).
+    DIM_PIX_1    = 256
+    DIM_1        = 128
+    DIM_2        = 256
+    DIM_3        = 512
+    LATENT_DIM_1 = 128
+    DIM_PIX_2    = 1024
+
+    DIM_4        = 1024
+    DIM_5        = 2048
+    LATENT_DIM_2 = 512
+
+    ALPHA1_ITERS = 5000
+    ALPHA2_ITERS = 5000
+    KL_PENALTY = 1.00
+    SQUARE_ALPHA = False
+    BETA_ITERS = 1000
+
+    # In Dec2, we break each spatial location into N blocks (analogous to channels
+    # in the original PixelCNN) and model each spatial location autoregressively
+    # as P(x)=P(x0)*P(x1|x0)*P(x2|x0,x1)... In my experiments values of N > 1
+    # actually hurt performance. Unsure why; might be a bug.
+    PIX_2_N_BLOCKS = 1
+
+    TIMES = {
+        'mode': 'iters',
+        'print_every': 1000,
+        'stop_after': 300000,
+        'callback_every': 20000
+    }
+
+    VANILLA = False
+    LR = 5e-4
+
+    LR_DECAY_AFTER = 250000
+    LR_DECAY_FACTOR = 2e-1
+
+    BATCH_SIZE = 64
+    N_CHANNELS = 3
+    HEIGHT = 32
+    WIDTH = 32
+    LATENTS1_HEIGHT = 8
+    LATENTS1_WIDTH = 8
+
+
+if DATASET == 'mnist_256':
+    train_data, dev_data, test_data = lib.mnist_256.load(BATCH_SIZE, BATCH_SIZE)
+elif DATASET == 'lsun_downsampled':
     train_data, dev_data = lib.lsun_downsampled.load(BATCH_SIZE)
 
 lib.print_model_settings(locals().copy())
@@ -696,8 +764,8 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
     decayed_lr = tf.train.exponential_decay(
         LR,
         total_iters,
-        TIMES['stop_after']*0.95,
-        1e-1,
+        LR_DECAY_AFTER,
+        LR_DECAY_FACTOR,
         staircase=True
     )
 
