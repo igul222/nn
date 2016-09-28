@@ -1,11 +1,13 @@
 import os, sys
 sys.path.append(os.getcwd())
 
-# try: # This only matters on Ishaan's computer
-#     import experiment_tools
-#     experiment_tools.wait_for_gpu(tf=True)
-# except ImportError:
-#     pass
+N_GPUS = 1
+
+try: # This only matters on Ishaan's computer
+    import experiment_tools
+    experiment_tools.wait_for_gpu(tf=True, n_gpus=N_GPUS)
+except ImportError:
+    pass
 
 import tflib as lib
 import tflib.train_loop
@@ -20,7 +22,7 @@ import functools
 LR = 1e-3
 BATCH_SIZE = 10000
 
-DEVICES = ['/gpu:0', '/gpu:1', '/gpu:2', '/gpu:3']
+DEVICES = ['/gpu:{}'.format(i) for i in xrange(N_GPUS)]
 
 TIMES = {
     'mode': 'iters',
