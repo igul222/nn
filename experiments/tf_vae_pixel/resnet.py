@@ -233,21 +233,20 @@ elif SETTINGS == '64px':
     EMBED_INPUTS = False
 
     # Turn on/off the bottom-level PixelCNN in Dec1/DecFull
-    PIXEL_LEVEL_PIXCNN = True
-    HIGHER_LEVEL_PIXCNN = True
-    PIXCNN_ONLY = False
+    PIXEL_LEVEL_PIXCNN = False
+    HIGHER_LEVEL_PIXCNN = False
 
     # These settings are good for a 'smaller' model that trains (up to 200K iters)
     # in ~1 day on a GTX 1080 (probably equivalent to 2 K40s).
     DIM_PIX_1    = 256
     PIX1_FILT_SIZE = 7
-    DIM_1        = 64
-    DIM_2        = 128
-    DIM_3        = 256
+    DIM_1        = 64*2
+    DIM_2        = 128*2
+    DIM_3        = 256*2
     LATENT_DIM_1 = 64
-    DIM_PIX_2    = 512
+    DIM_PIX_2    = 512*2
 
-    DIM_4        = 512
+    DIM_4        = 512*2
     DIM_5        = 4096
     LATENT_DIM_2 = 512
 
