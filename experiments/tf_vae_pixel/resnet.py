@@ -49,6 +49,7 @@ if SETTINGS == 'mnist_256':
     # Turn on/off the bottom-level PixelCNN in Dec1/DecFull
     PIXEL_LEVEL_PIXCNN = True
     HIGHER_LEVEL_PIXCNN = True
+    PIXCNN_ONLY = False
 
     # These settings are good for a 'smaller' model that trains (up to 200K iters)
     # in ~1 day on a GTX 1080 (probably equivalent to 2 K40s).
@@ -108,6 +109,7 @@ elif SETTINGS == '32px_small':
     # Turn on/off the bottom-level PixelCNN in Dec1/DecFull
     PIXEL_LEVEL_PIXCNN = True
     HIGHER_LEVEL_PIXCNN = True
+    PIXCNN_ONLY = False
 
     # These settings are good for a 'smaller' model that trains (up to 200K iters)
     # in ~1 day on a GTX 1080 (probably equivalent to 2 K40s).
@@ -169,6 +171,7 @@ elif SETTINGS == '32px_big':
     # Turn on/off the bottom-level PixelCNN in Dec1/DecFull
     PIXEL_LEVEL_PIXCNN = True
     HIGHER_LEVEL_PIXCNN = True
+    PIXCNN_ONLY = False
 
     # These settings are good for a 'smaller' model that trains (up to 200K iters)
     # in ~1 day on a GTX 1080 (probably equivalent to 2 K40s).
@@ -232,6 +235,7 @@ elif SETTINGS == '64px':
     # Turn on/off the bottom-level PixelCNN in Dec1/DecFull
     PIXEL_LEVEL_PIXCNN = True
     HIGHER_LEVEL_PIXCNN = True
+    PIXCNN_ONLY = False
 
     # These settings are good for a 'smaller' model that trains (up to 200K iters)
     # in ~1 day on a GTX 1080 (probably equivalent to 2 K40s).
@@ -246,6 +250,13 @@ elif SETTINGS == '64px':
     DIM_4        = 512
     DIM_5        = 4096
     LATENT_DIM_2 = 512
+
+
+    # Uncomment for PixelCNN only (NO VAE)
+    # print "WARNING PIXCNN ONLY"
+    # PIXCNN_ONLY = True
+    # DIM_PIX_1    = 128
+    # PIX1_FILT_SIZE = 3
 
     # In Dec2, we break each spatial location into N blocks (analogous to channels
     # in the original PixelCNN) and model each spatial location autoregressively
@@ -351,12 +362,16 @@ def ResidualBlock(name, input_dim, output_dim, inputs, inputs_stdev, filter_size
     return shortcut + (0.3 * output)
 
 def Enc1(images):
+    if PIXCNN_ONLY:
+        batch_size = tf.shape(images)[0]
+        return tf.zeros(tf.pack([batch_size, 2*LATENT_DIM_1, LATENTS1_WIDTH, LATENTS1_HEIGHT]), tf.float32)
+
     output = images
 
     if SETTINGS == '64px':
         output = lib.ops.conv2d.Conv2D('Enc1.Input', input_dim=N_CHANNELS, output_dim=DIM_1, filter_size=5, inputs=output, he_init=False, stride=2)
     else:
-        output = lib.ops.conv2d.Conv2D('Enc1.Input', input_dim=N_CHANNELS, output_dim=DIM_1, filter_size=1, inputs=output, he_init=False, stride=2)
+        output = lib.ops.conv2d.Conv2D('Enc1.Input', input_dim=N_CHANNELS, output_dim=DIM_1, filter_size=1, inputs=output, he_init=False)
 
     output = ResidualBlock('Enc1.Res1', input_dim=DIM_1, output_dim=DIM_2, filter_size=3, resample='down', inputs_stdev=1,          inputs=output)
     output = ResidualBlock('Enc1.Res2', input_dim=DIM_2, output_dim=DIM_3, filter_size=3, resample='down', inputs_stdev=np.sqrt(2), inputs=output)
@@ -367,15 +382,20 @@ def Enc1(images):
     return output
 
 def Dec1(latents, images):
-    output = tf.clip_by_value(latents, -50., 50.)
-    output = lib.ops.conv2d.Conv2D('Dec1.Input', input_dim=LATENT_DIM_1, output_dim=DIM_3, filter_size=1, inputs=output, he_init=False)
 
-    output = ResidualBlock('Dec1.Res1', input_dim=DIM_3, output_dim=DIM_3, filter_size=3, resample=None, inputs_stdev=1, inputs=output)
-    output = ResidualBlock('Dec1.Res2', input_dim=DIM_3, output_dim=DIM_2, filter_size=3, resample='up', inputs_stdev=np.sqrt(2), inputs=output)
-    output = ResidualBlock('Dec1.Res3', input_dim=DIM_2, output_dim=DIM_1, filter_size=3, resample='up', inputs_stdev=np.sqrt(3), inputs=output)
+    if PIXCNN_ONLY:
+        batch_size = tf.shape(latents)[0]
+        output = tf.zeros(tf.pack([batch_size, DIM_1, HEIGHT, WIDTH]), tf.float32)
+    else:
+        output = tf.clip_by_value(latents, -50., 50.)
+        output = lib.ops.conv2d.Conv2D('Dec1.Input', input_dim=LATENT_DIM_1, output_dim=DIM_3, filter_size=1, inputs=output, he_init=False)
 
-    if SETTINGS == '64px':
-        output = ResidualBlock('Dec1.Res4', input_dim=DIM_1, output_dim=DIM_1, filter_size=3, resample='up', inputs_stdev=np.sqrt(3), inputs=output)
+        output = ResidualBlock('Dec1.Res1', input_dim=DIM_3, output_dim=DIM_3, filter_size=3, resample=None, inputs_stdev=1, inputs=output)
+        output = ResidualBlock('Dec1.Res2', input_dim=DIM_3, output_dim=DIM_2, filter_size=3, resample='up', inputs_stdev=np.sqrt(2), inputs=output)
+        output = ResidualBlock('Dec1.Res3', input_dim=DIM_2, output_dim=DIM_1, filter_size=3, resample='up', inputs_stdev=np.sqrt(3), inputs=output)
+
+        if SETTINGS == '64px':
+            output = ResidualBlock('Dec1.Res4', input_dim=DIM_1, output_dim=DIM_1, filter_size=3, resample='up', inputs_stdev=np.sqrt(3), inputs=output)
 
     if PIXEL_LEVEL_PIXCNN:
 
@@ -388,6 +408,9 @@ def Dec1(latents, images):
         output = tf.concat(1, [masked_images, output])
 
         output = ResidualBlock('Dec1.Pix2Res', input_dim=2*DIM_1,   output_dim=DIM_PIX_1, filter_size=PIX1_FILT_SIZE, mask_type=('b', N_CHANNELS), inputs_stdev=1,          inputs=output)
+        if PIXCNN_ONLY:
+            for i in xrange(9):
+                output = ResidualBlock('Dec1.Pix2Res_'+str(i), input_dim=DIM_PIX_1,   output_dim=DIM_PIX_1, filter_size=PIX1_FILT_SIZE, mask_type=('b', N_CHANNELS), inputs_stdev=1,          inputs=output)
         output = ResidualBlock('Dec1.Pix3Res', input_dim=DIM_PIX_1, output_dim=DIM_PIX_1, filter_size=1, mask_type=('b', N_CHANNELS), inputs_stdev=np.sqrt(2), inputs=output)
 
         output = lib.ops.conv2d.Conv2D('Dec1.Out', input_dim=DIM_PIX_1, output_dim=256*N_CHANNELS, filter_size=1, mask_type=('b', N_CHANNELS), he_init=False, inputs=output)
@@ -402,6 +425,10 @@ def Dec1(latents, images):
     )
 
 def Enc2(latents):
+    if PIXCNN_ONLY:
+        batch_size = tf.shape(latents)[0]
+        return tf.zeros(tf.pack([batch_size, 2*LATENT_DIM_2]), tf.float32)
+
     output = tf.clip_by_value(latents, -50., 50.)
 
     output = lib.ops.conv2d.Conv2D('Enc2.Input', input_dim=LATENT_DIM_1, output_dim=DIM_3, filter_size=1, inputs=output, he_init=False)
@@ -423,6 +450,10 @@ def Enc2(latents):
     return output
 
 def Dec2(latents, targets):
+    if PIXCNN_ONLY:
+        batch_size = tf.shape(latents)[0]
+        return tf.zeros(tf.pack([batch_size, 2*LATENT_DIM_1, LATENTS1_HEIGHT, LATENTS1_WIDTH]), tf.float32)
+
     output = tf.clip_by_value(latents, -50., 50.)
     output = lib.ops.linear.Linear('Dec2.Input', input_dim=LATENT_DIM_2, output_dim=DIM_5, inputs=output)
     output = tf.nn.elu(output)
