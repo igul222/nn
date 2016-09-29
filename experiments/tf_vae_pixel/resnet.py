@@ -256,16 +256,16 @@ elif SETTINGS == '64px':
     TIMES = {
         'mode': 'iters',
         'print_every': 1,
-        'test_every': 33,
+        'test_every': 10000,
         'stop_after': 400000,
         'callback_every': 25000
     }
 
     VANILLA = False
-    LR = 1e-3
+    LR = 5e-4
 
     LR_DECAY_AFTER = 300000
-    LR_DECAY_FACTOR = 1e-1
+    LR_DECAY_FACTOR = 2e-1
 
     ALPHA1_ITERS = 5000
     ALPHA2_ITERS = 20000
