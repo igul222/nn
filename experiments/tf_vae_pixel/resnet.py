@@ -27,6 +27,7 @@ import tflib.ops.embedding
 
 import tflib.lsun_bedrooms
 import tflib.mnist_256
+import tflib.small_imagenet
 
 import numpy as np
 import tensorflow as tf
@@ -36,7 +37,7 @@ from scipy.misc import imsave
 import time
 import functools
 
-DATASET = 'lsun_64' # mnist_256, lsun_32, lsun_64
+DATASET = 'imagenet_64' # mnist_256, lsun_32, lsun_64, imagenet_64
 SETTINGS = '64px' # mnist_256, 32px_small, 32px_big, 64px
 
 if SETTINGS == 'mnist_256':
@@ -238,7 +239,7 @@ elif SETTINGS == '64px':
 
     # These settings are good for a 'smaller' model that trains (up to 200K iters)
     # in ~1 day on a GTX 1080 (probably equivalent to 2 K40s).
-    DIM_PIX_1    = 256
+    DIM_PIX_1    = 128
     PIX1_FILT_SIZE = 7
     DIM_1        = 64
     DIM_2        = 128
@@ -296,6 +297,8 @@ elif DATASET == 'lsun_32':
     train_data, dev_data = lib.lsun_bedrooms.load(BATCH_SIZE, downsample=True)
 elif DATASET == 'lsun_64':
     train_data, dev_data = lib.lsun_bedrooms.load(BATCH_SIZE, downsample=False)
+elif DATASET == 'imagenet_64':
+    train_data, dev_data = lib.small_imagenet.load(BATCH_SIZE)
 
 lib.print_model_settings(locals().copy())
 
