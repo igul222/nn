@@ -5,10 +5,12 @@ import time
 def make_generator(path, n_files, batch_size):
     def get_epoch():
         images = np.zeros((batch_size, 3, 64, 64), dtype='int32')
-        for i in xrange(n_files):
+        files = range(n_files)
+        np.random.shuffle(files)
+        for n, i in enumerate(files):
             image = scipy.misc.imread("{}/{}.png".format(path, str(i+1).zfill(len(str(n_files)))))
-            images[i % batch_size] = image.transpose(2,0,1)
-            if i > 0 and i % batch_size == 0:
+            images[n % batch_size] = image.transpose(2,0,1)
+            if n > 0 and n % batch_size == 0:
                 yield (images,)
     return get_epoch
 

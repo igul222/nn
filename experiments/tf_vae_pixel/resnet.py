@@ -37,7 +37,7 @@ from scipy.misc import imsave
 import time
 import functools
 
-DATASET = 'lsun_64' # mnist_256, lsun_32, lsun_64, imagenet_64
+DATASET = 'imagenet_64' # mnist_256, lsun_32, lsun_64, imagenet_64
 SETTINGS = '64px' # mnist_256, 32px_small, 32px_big, 64px
 
 if SETTINGS == 'mnist_256':
