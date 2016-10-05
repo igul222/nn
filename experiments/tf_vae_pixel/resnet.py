@@ -37,7 +37,7 @@ from scipy.misc import imsave
 import time
 import functools
 
-DATASET = 'imagenet_64' # mnist_256, lsun_32, lsun_64, imagenet_64
+DATASET = 'lsun_64' # mnist_256, lsun_32, lsun_64, imagenet_64
 SETTINGS = '64px' # mnist_256, 32px_small, 32px_big, 64px
 
 if SETTINGS == 'mnist_256':
@@ -237,8 +237,6 @@ elif SETTINGS == '64px':
     PIXEL_LEVEL_PIXCNN = True
     HIGHER_LEVEL_PIXCNN = True
 
-    # These settings are good for a 'smaller' model that trains (up to 200K iters)
-    # in ~1 day on a GTX 1080 (probably equivalent to 2 K40s).
     DIM_PIX_1    = 128
     PIX1_FILT_SIZE = 7
     DIM_1        = 64
@@ -248,7 +246,7 @@ elif SETTINGS == '64px':
     DIM_PIX_2    = 512
 
     DIM_4        = 512
-    DIM_5        = 4096
+    DIM_5        = 2048
     LATENT_DIM_2 = 512
 
     PIXCNN_ONLY = False
@@ -268,14 +266,14 @@ elif SETTINGS == '64px':
         'mode': 'iters',
         'print_every': 1,
         'test_every': 10000,
-        'stop_after': 400000,
+        'stop_after': 200000,
         'callback_every': 25000
     }
 
     VANILLA = False
     LR = 5e-4
 
-    LR_DECAY_AFTER = 300000
+    LR_DECAY_AFTER = 180000
     LR_DECAY_FACTOR = 2e-1
 
     ALPHA1_ITERS = 5000
