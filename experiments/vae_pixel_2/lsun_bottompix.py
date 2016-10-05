@@ -8,7 +8,7 @@ sys.path.append(os.getcwd())
 
 try: # This only matters on Ishaan's computer
     import experiment_tools
-    experiment_tools.wait_for_gpu(high_priority=False)
+    experiment_tools.wait_for_gpu()
 except ImportError:
     pass
 
@@ -116,39 +116,39 @@ def Dec1(latents, images):
 
     output = latents
 
-    output = leakyrelu(lib.ops.deconv2d.Deconv2D('Dec1.A', input_dim=LATENT_DIM_1, output_dim=DIM_2, filter_size=3, inputs=output))
-    output = leakyrelu(lib.ops.deconv2d.Deconv2D('Dec1.B', input_dim=DIM_2, output_dim=DIM_1, filter_size=3, inputs=output))
+    # output = leakyrelu(lib.ops.deconv2d.Deconv2D('Dec1.A', input_dim=LATENT_DIM_1, output_dim=DIM_2, filter_size=3, inputs=output))
+    # output = leakyrelu(lib.ops.deconv2d.Deconv2D('Dec1.B', input_dim=DIM_2, output_dim=DIM_1, filter_size=3, inputs=output))
 
-    # output = leakyrelu(lib.ops.conv2d.Conv2D('Dec1.1', input_dim=LATENT_DIM_1, output_dim=DIM_3, filter_size=3, inputs=output))
+    output = leakyrelu(lib.ops.conv2d.Conv2D('Dec1.1', input_dim=LATENT_DIM_1, output_dim=DIM_3, filter_size=3, inputs=output))
     # output = leakyrelu(lib.ops.conv2d.Conv2D('Dec1.2', input_dim=DIM_3, output_dim=DIM_3, filter_size=3, inputs=output))
 
-    # output = leakyrelu(lib.ops.deconv2d.Deconv2D('Dec1.3', input_dim=DIM_3, output_dim=DIM_2, filter_size=3, inputs=output))
-    # output = leakyrelu(lib.ops.conv2d.Conv2D(    'Dec1.4', input_dim=DIM_2, output_dim=DIM_2, filter_size=3, inputs=output))
+    output = leakyrelu(lib.ops.deconv2d.Deconv2D('Dec1.3', input_dim=DIM_3, output_dim=DIM_2, filter_size=3, inputs=output))
+    output = leakyrelu(lib.ops.conv2d.Conv2D(    'Dec1.4', input_dim=DIM_2, output_dim=DIM_2, filter_size=3, inputs=output))
 
-    # output = leakyrelu(lib.ops.deconv2d.Deconv2D('Dec1.5', input_dim=DIM_2, output_dim=DIM_1, filter_size=3, inputs=output))
-    # output = leakyrelu(lib.ops.conv2d.Conv2D(    'Dec1.6', input_dim=DIM_1, output_dim=DIM_1, filter_size=3, inputs=output))
+    output = leakyrelu(lib.ops.deconv2d.Deconv2D('Dec1.5', input_dim=DIM_2, output_dim=DIM_1, filter_size=3, inputs=output))
+    output = leakyrelu(lib.ops.conv2d.Conv2D(    'Dec1.6', input_dim=DIM_1, output_dim=DIM_1, filter_size=3, inputs=output))
 
+    output = lib.ops.conv2d.Conv2D('Dec1.Out', input_dim=DIM_1, output_dim=256*N_CHANNELS, filter_size=1, inputs=output, mask_type=('b', N_CHANNELS), he_init=False)
 
+    # images = ((T.cast(images, 'float32') / 128) - 1) * 5
 
-    images = ((T.cast(images, 'float32') / 128) - 1) * 5
+    # masked_images = leakyrelu(lib.ops.conv2d.Conv2D(
+    #     'Dec1.Pix1', 
+    #     input_dim=N_CHANNELS,
+    #     output_dim=DIM_1,
+    #     filter_size=5, 
+    #     inputs=images, 
+    #     mask_type=('a', N_CHANNELS)
+    # ))
 
-    masked_images = leakyrelu(lib.ops.conv2d.Conv2D(
-        'Dec1.Pix1', 
-        input_dim=N_CHANNELS,
-        output_dim=DIM_1,
-        filter_size=5, 
-        inputs=images, 
-        mask_type=('a', N_CHANNELS)
-    ))
+    # output = T.concatenate([masked_images, output], axis=1)
 
-    output = T.concatenate([masked_images, output], axis=1)
+    # output = leakyrelu(lib.ops.conv2d.Conv2D('Dec1.Pix2', input_dim=2*DIM_1, output_dim=DIM_PIX_1, filter_size=5, inputs=output, mask_type=('b', N_CHANNELS)))
+    # output = leakyrelu(lib.ops.conv2d.Conv2D('Dec1.Pix3', input_dim=DIM_PIX_1, output_dim=DIM_PIX_1, filter_size=5, inputs=output, mask_type=('b', N_CHANNELS)))
+    # output = leakyrelu(lib.ops.conv2d.Conv2D('Dec1.Pix4', input_dim=DIM_PIX_1, output_dim=DIM_PIX_1, filter_size=5, inputs=output, mask_type=('b', N_CHANNELS)))
+    # output = leakyrelu(lib.ops.conv2d.Conv2D('Dec1.Pix5', input_dim=DIM_PIX_1, output_dim=DIM_PIX_1, filter_size=1, inputs=output, mask_type=('b', N_CHANNELS)))
 
-    output = leakyrelu(lib.ops.conv2d.Conv2D('Dec1.Pix2', input_dim=2*DIM_1, output_dim=DIM_PIX_1, filter_size=5, inputs=output, mask_type=('b', N_CHANNELS)))
-    output = leakyrelu(lib.ops.conv2d.Conv2D('Dec1.Pix3', input_dim=DIM_PIX_1, output_dim=DIM_PIX_1, filter_size=5, inputs=output, mask_type=('b', N_CHANNELS)))
-    output = leakyrelu(lib.ops.conv2d.Conv2D('Dec1.Pix4', input_dim=DIM_PIX_1, output_dim=DIM_PIX_1, filter_size=5, inputs=output, mask_type=('b', N_CHANNELS)))
-    output = leakyrelu(lib.ops.conv2d.Conv2D('Dec1.Pix5', input_dim=DIM_PIX_1, output_dim=DIM_PIX_1, filter_size=1, inputs=output, mask_type=('b', N_CHANNELS)))
-
-    output = lib.ops.conv2d.Conv2D('Dec1.Out', input_dim=DIM_PIX_1, output_dim=256*N_CHANNELS, filter_size=1, inputs=output, mask_type=('b', N_CHANNELS), he_init=False)
+    # output = lib.ops.conv2d.Conv2D('Dec1.Out', input_dim=DIM_PIX_1, output_dim=256*N_CHANNELS, filter_size=1, inputs=output, mask_type=('b', N_CHANNELS), he_init=False)
 
     return output.reshape((-1, 256, N_CHANNELS, HEIGHT, WIDTH)).dimshuffle(0,2,3,4,1)
 
