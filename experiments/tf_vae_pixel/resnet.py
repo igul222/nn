@@ -37,7 +37,7 @@ from scipy.misc import imsave
 import time
 import functools
 
-DATASET = 'imagenet_64' # mnist_256, lsun_32, lsun_64, imagenet_64
+DATASET = 'lsun_64' # mnist_256, lsun_32, lsun_64, imagenet_64
 SETTINGS = '64px' # mnist_256, 32px_small, 32px_big, 64px
 
 if SETTINGS == 'mnist_256':
@@ -328,8 +328,13 @@ def ResidualBlock(name, input_dim, output_dim, inputs, inputs_stdev, filter_size
             kwargs['output_dim'] = 4*kwargs['output_dim']
             output = lib.ops.conv2d.Conv2D(*args, **kwargs)
             output = tf.transpose(output, [0,2,3,1])
-            old_shape = tf.shape(output)
-            output = tf.reshape(output, tf.pack([old_shape[0], 2*old_shape[1], 2*old_shape[2], old_shape[3]/4]))
+
+            # New (correct?) implementation
+            output = tf.depth_to_space(output, 2)
+            # Old (incorrect?) implementation:
+            # old_shape = tf.shape(output)
+            # output = tf.reshape(output, tf.pack([old_shape[0], 2*old_shape[1], 2*old_shape[2], old_shape[3]/4]))
+
             output = tf.transpose(output, [0,3,1,2])
             return output
         conv_1        = functools.partial(lib.ops.deconv2d.Deconv2D, input_dim=input_dim, output_dim=output_dim)
