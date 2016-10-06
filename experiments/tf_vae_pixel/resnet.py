@@ -795,19 +795,60 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
         ch_sym = tf.placeholder(tf.int32, shape=None)
         y_sym = tf.placeholder(tf.int32, shape=None)
         x_sym = tf.placeholder(tf.int32, shape=None)
-        logits = tf.reshape(tf.slice(outputs1, tf.pack([0, ch_sym, y_sym, x_sym, 0]), tf.pack([-1, 1, 1, 1, -1])), [-1, 256])
-        dec1_fn_out = tf.multinomial(logits, 1)[:, 0]
-        def dec1_fn(_latents, _targets, _ch, _y, _x):
-            return session.run(dec1_fn_out, feed_dict={latents1: _latents, images: _targets, ch_sym: _ch, y_sym: _y, x_sym: _x, total_iters: 99999})
+        logits_sym = tf.reshape(tf.slice(outputs1, tf.pack([0, ch_sym, y_sym, x_sym, 0]), tf.pack([-1, 1, 1, 1, -1])), [-1, 256])
 
-        def enc_fn(_images):
-            return session.run([latents1, latents2], feed_dict={images: _images, total_iters: 99999})
+        def dec1_logits_fn(_latents, _targets, _ch, _y, _x):
+            return session.run(logits_sym,
+                               feed_dict={latents1: _latents,
+                                          images: _targets,
+                                          ch_sym: _ch,
+                                          y_sym: _y,
+                                          x_sym: _x,
+                                          total_iters: 99999})
 
-        sample_fn_latents2 = np.random.normal(size=(32, LATENT_DIM_2)).astype('float32')
-        sample_fn_latents2[1::2] = sample_fn_latents2[0::2]
-        sample_fn_latent1_randn = np.random.normal(size=(LATENTS1_HEIGHT,LATENTS1_WIDTH,32,LATENT_DIM_1))
+        N_SAMPLES = 64
+        HOLD_Z2_CONSTANT = False
+        HOLD_EPSILON_1_CONSTANT = False
+        HOLD_EPSILON_PIXELS_CONSTANT = False
+
+        # Draw z2 from N(0,I)
+        z2 = np.random.normal(size=(N_SAMPLES, LATENT_DIM_2)).astype('float32')
+        if HOLD_Z2_CONSTANT:
+          z2[:] = z2[0][None]
+
+        # Draw epsilon_1 from N(0,I)
+        epsilon_1 = np.random.normal(size=(N_SAMPLES, LATENT_DIM_1, LATENTS1_HEIGHT, LATENTS1_WIDTH)).astype('float32')
+        if HOLD_EPSILON_1_CONSTANT:
+          epsilon_1[:] = epsilon_1[0][None]
+
+        # Draw epsilon_pixels from U[0,1]
+        epsilon_pixels = np.random.uniform(size=(N_SAMPLES, N_CHANNELS, HEIGHT, WIDTH))
+        if HOLD_EPSILON_PIXELS_CONSTANT:
+          epsilon_pixels[:] = epsilon_pixels[0][None]
+
 
         def generate_and_save_samples(tag):
+            # Draw z1 autoregressively using z2 and epsilon1
+            print "Generating z1"
+            z1 = np.zeros((N_SAMPLES, LATENT_DIM_1, LATENTS1_HEIGHT, LATENTS1_WIDTH), dtype='float32')
+            for y in xrange(LATENTS1_HEIGHT):
+              for x in xrange(LATENTS1_WIDTH):
+                z1_prior_mu, z1_prior_logsig = dec2_fn(z2, z1)
+                z1[:,:,y,x] = z1_prior_mu[:,:,y,x] + np.exp(z1_prior_logsig[:,:,y,x]) * epsilon_1[:,:,y,x]
+
+            # Draw pixels (the images) autoregressively using z1 and epsilon_x
+            print "Generating pixels"
+            pixels = np.zeros((N_SAMPLES, N_CHANNELS, HEIGHT, WIDTH)).astype('int32')
+            for y in xrange(HEIGHT):
+                for x in xrange(WIDTH):
+                    for ch in xrange(N_CHANNELS):
+                        logits = dec1_logits_fn(z1, pixels, ch, y, x)
+                        probs = np.exp(logits - np.max(logits, axis=-1, keepdims=True))
+                        probs = probs / np.sum(probs, axis=-1, keepdims=True)
+                        cdf = np.cumsum(probs, axis=-1)
+                        pixels[:,ch,y,x] = np.argmax(cdf >= epsilon_pixels[:,ch,y,x,None])
+
+            # Save them
             def color_grid_vis(X, nh, nw, save_path):
                 # from github.com/Newmu
                 X = X.transpose(0,2,3,1)
@@ -819,46 +860,12 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
                     img[j*h:j*h+h, i*w:i*w+w, :] = x
                 imsave(save_path, img)
 
-            print "Generating latents1"
-
-            latents1 = np.zeros(
-                (32, LATENT_DIM_1, LATENTS1_HEIGHT, LATENTS1_WIDTH),
-                dtype='float32'
-            )
-
-            for y in xrange(8):
-                for x in xrange(8):
-                    for block in xrange(PIX_2_N_BLOCKS):
-                        mu, logsig = dec2_fn(sample_fn_latents2, latents1)
-                        mu = mu[:,:,y,x]
-                        logsig = logsig[:,:,y,x]
-                        z = mu + ( np.exp(logsig) * sample_fn_latent1_randn[y,x] )
-                        latents1[:,block::PIX_2_N_BLOCKS,y,x] = z[:,block::PIX_2_N_BLOCKS]
-
-            latents1_copied = np.zeros(
-                (64, LATENT_DIM_1, LATENTS1_HEIGHT, LATENTS1_WIDTH),
-                dtype='float32'
-            )
-            latents1_copied[0::2] = latents1
-            latents1_copied[1::2] = latents1
-
-            samples = np.zeros(
-                (64, N_CHANNELS, HEIGHT, WIDTH), 
-                dtype='int32'
-            )
-
-            print "Generating samples"
-            for y in xrange(HEIGHT):
-                for x in xrange(WIDTH):
-                    for ch in xrange(N_CHANNELS):
-                        next_sample = dec1_fn(latents1_copied, samples, ch, y, x)
-                        samples[:,ch,y,x] = next_sample
-
-            print "Saving samples"
+            print "Saving"
+            rows = int(np.sqrt(N_SAMPLES))
+            while N_SAMPLES % rows != 0:
+                rows -= 1
             color_grid_vis(
-                samples,
-                8,
-                8,
+                pixels, rows, N_SAMPLES/rows, 
                 'samples_{}.png'.format(tag)
             )
 
