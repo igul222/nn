@@ -60,11 +60,11 @@ lib.ops.linear.enable_default_weightnorm()
 # LATENT_BLOCKS = 16
 
 # 'big' bottompix
-DIM_1        = 64
-DIM_PIX_1    = 128
-DIM_2        = 128
-DIM_3        = 256
-DIM_PIX_2    = 512
+DIM_1        = 128
+# DIM_PIX_1    = 256
+DIM_2        = 256
+DIM_3        = 512
+DIM_PIX_2    = 1024
 LATENT_DIM_1 = 128 # if stuff breaks, make this 64 first
 LATENT_BLOCKS = 32
 
@@ -74,11 +74,11 @@ ALPHA_ITERS = 10000
 BETA_ITERS = 1000
 
 VANILLA = False
-LR = 1e-3
+LR = 5e-4
 
 LSUN_DOWNSAMPLE = True
 
-TIMES = ('iters', 100, 1000*1000, 10000)
+TIMES = ('iters', 100, 300*1000, 10000)
 
 BATCH_SIZE = 64
 N_CHANNELS = 3
@@ -91,8 +91,9 @@ lib.print_model_settings(locals().copy())
 theano_srng = RandomStreams(seed=234)
 
 def leakyrelu(x):
-    return T.nnet.relu(x)
-    # return T.nnet.relu(x, alpha=0.05)
+    return T.nnet.elu(x)
+    # return T.nnet.relu(x)
+    # return T.nnet.elu(x, alpha=0.2)
 
 def Enc1(inputs):
     output = inputs
@@ -278,15 +279,15 @@ dec1_fn = theano.function(
     on_unused_input='warn'
 )
 
-enc_fn_latents1 = mu1 + (np.random.normal(size=(4,LATENT_DIM_1,8,8)).astype('float32') * T.exp(logsig1))
+enc_fn_latents1 = mu1 + (np.random.normal(size=(32,LATENT_DIM_1,8,8)).astype('float32') * T.exp(logsig1))
 enc_fn = theano.function(
     [images],
     enc_fn_latents1,
     on_unused_input='warn'
 )
 
-dev_images = dev_data().next()[0][:4]
-sample_fn_latent1_eps = np.random.normal(size=(4,LATENT_DIM_1,8,8))
+dev_images = dev_data().next()[0][:32]
+sample_fn_latent1_eps = np.random.normal(size=(32,LATENT_DIM_1,8,8))
 
 def generate_and_save_samples(tag):
     def color_grid_vis(X, nh, nw, save_path):
@@ -305,7 +306,7 @@ def generate_and_save_samples(tag):
 
     print "Generating latents1"
     latents1 = np.zeros(
-        (4, LATENT_DIM_1, 8, 8),
+        (32, LATENT_DIM_1, 8, 8),
         dtype='float32'
     )
 
@@ -319,13 +320,6 @@ def generate_and_save_samples(tag):
 
     latents1 = np.concatenate([r_latents1, latents1], axis=0)
 
-    latents1_copied = np.zeros(
-        (64, LATENT_DIM_1, 8, 8),
-        dtype='float32'
-    )
-    for i in xrange(8):
-        latents1_copied[i::8] = latents1
-
     samples = np.zeros(
         (64, N_CHANNELS, HEIGHT, WIDTH), 
         dtype='int32'
@@ -335,10 +329,8 @@ def generate_and_save_samples(tag):
     for y in xrange(HEIGHT):
         for x in xrange(WIDTH):
             for ch in xrange(N_CHANNELS):
-                next_sample = dec1_fn(latents1_copied, samples, ch, y, x)
+                next_sample = dec1_fn(latents1, samples, ch, y, x)
                 samples[:,ch,y,x] = next_sample
-
-    samples[:4*8:8] = dev_images
 
     print "Saving samples"
     color_grid_vis(
