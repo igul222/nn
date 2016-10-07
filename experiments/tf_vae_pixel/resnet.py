@@ -328,13 +328,7 @@ def ResidualBlock(name, input_dim, output_dim, inputs, inputs_stdev, filter_size
             kwargs['output_dim'] = 4*kwargs['output_dim']
             output = lib.ops.conv2d.Conv2D(*args, **kwargs)
             output = tf.transpose(output, [0,2,3,1])
-
-            # New (correct?) implementation
             output = tf.depth_to_space(output, 2)
-            # Old (incorrect?) implementation:
-            # old_shape = tf.shape(output)
-            # output = tf.reshape(output, tf.pack([old_shape[0], 2*old_shape[1], 2*old_shape[2], old_shape[3]/4]))
-
             output = tf.transpose(output, [0,3,1,2])
             return output
         conv_1        = functools.partial(lib.ops.deconv2d.Deconv2D, input_dim=input_dim, output_dim=output_dim)
@@ -412,7 +406,7 @@ def Dec1(latents, images):
         # Warning! Because of the masked convolutions it's very important that masked_images comes first in this concat
         output = tf.concat(1, [masked_images, output])
 
-        output = ResidualBlock('Dec1.Pix2Res', input_dim=2*DIM_1,   output_dim=DIM_PIX_1, filter_size=PIX1_FILT_SIZE, mask_type=('b', N_CHANNELS), inputs_stdev=1,          inputs=output)
+        output = ResidualBlock('Dec1.Pix2Res', input_dim=2*DIM_1,   output_dim=DIM_PIX_1, filter_size=PIX1_FILT_SIZE, mask_type=('b', N_CHANNELS), inputs_stdev=1, inputs=output)
         if PIXCNN_ONLY:
             for i in xrange(9):
                 output = ResidualBlock('Dec1.Pix2Res_'+str(i), input_dim=DIM_PIX_1,   output_dim=DIM_PIX_1, filter_size=PIX1_FILT_SIZE, mask_type=('b', N_CHANNELS), inputs_stdev=1,          inputs=output)

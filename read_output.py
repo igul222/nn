@@ -2,7 +2,7 @@ import re
 import numpy as np
 
 INTERVAL = 10000
-LABELS = ['secs/iter', 'cost', 'kl1', 'kl2']
+LABELS = ['secs/iter', 'train cost', 'train kl1', 'train kl2']
 
 for label in LABELS:
     print "=============================="
