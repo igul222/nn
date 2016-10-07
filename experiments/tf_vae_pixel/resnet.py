@@ -312,6 +312,14 @@ def nonlinearity(x):
 def pixcnn_gated_nonlinearity(a, b):
     return tf.sigmoid(a) * tf.tanh(b)
 
+def SubpixelConv2D(*args, **kwargs):
+    kwargs['output_dim'] = 4*kwargs['output_dim']
+    output = lib.ops.conv2d.Conv2D(*args, **kwargs)
+    output = tf.transpose(output, [0,2,3,1])
+    output = tf.depth_to_space(output, 2)
+    output = tf.transpose(output, [0,3,1,2])
+    return output
+
 def ResidualBlock(name, input_dim, output_dim, inputs, inputs_stdev, filter_size, mask_type=None, resample=None, he_init=True):
     """
     resample: None, 'down', or 'up'
@@ -324,14 +332,8 @@ def ResidualBlock(name, input_dim, output_dim, inputs, inputs_stdev, filter_size
         conv_1        = functools.partial(lib.ops.conv2d.Conv2D, input_dim=input_dim, output_dim=input_dim)
         conv_2        = functools.partial(lib.ops.conv2d.Conv2D, input_dim=input_dim, output_dim=output_dim, stride=2)
     elif resample=='up':
-        def conv_shortcut(*args, **kwargs):
-            kwargs['output_dim'] = 4*kwargs['output_dim']
-            output = lib.ops.conv2d.Conv2D(*args, **kwargs)
-            output = tf.transpose(output, [0,2,3,1])
-            output = tf.depth_to_space(output, 2)
-            output = tf.transpose(output, [0,3,1,2])
-            return output
-        conv_1        = functools.partial(lib.ops.deconv2d.Deconv2D, input_dim=input_dim, output_dim=output_dim)
+        conv_shortcut = SubpixelConv2D
+        conv_1        = functools.partial(SubpixelConv2D, input_dim=input_dim, output_dim=output_dim)
         conv_2        = functools.partial(lib.ops.conv2d.Conv2D, input_dim=output_dim, output_dim=output_dim)
     elif resample==None:
         conv_shortcut = lib.ops.conv2d.Conv2D
