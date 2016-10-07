@@ -846,7 +846,7 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
                         probs = np.exp(logits - np.max(logits, axis=-1, keepdims=True))
                         probs = probs / np.sum(probs, axis=-1, keepdims=True)
                         cdf = np.cumsum(probs, axis=-1)
-                        pixels[:,ch,y,x] = np.argmax(cdf >= epsilon_pixels[:,ch,y,x,None])
+                        pixels[:,ch,y,x] = np.argmax(cdf >= epsilon_pixels[:,ch,y,x,None], axis=-1)
 
             # Save them
             def color_grid_vis(X, nh, nw, save_path):
