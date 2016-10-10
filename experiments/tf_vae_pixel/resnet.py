@@ -577,7 +577,7 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
 
     def split(mu_and_logsig):
         mu, logsig = tf.split(1, 2, mu_and_logsig)
-        sig = tf.nn.softsign(logsig)+1
+        sig = 0.5 * (tf.nn.softsign(logsig)+1)
         logsig = tf.log(sig)
         return mu, logsig, sig
 
