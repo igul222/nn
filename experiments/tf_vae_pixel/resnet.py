@@ -55,7 +55,6 @@ if SETTINGS == 'mnist_256':
     # These settings are good for a 'smaller' model that trains (up to 200K iters)
     # in ~1 day on a GTX 1080 (probably equivalent to 2 K40s).
     DIM_PIX_1    = 32
-    PIX1_FILT_SIZE = 5
     DIM_1        = 16
     DIM_2        = 32
     DIM_3        = 32
@@ -115,7 +114,6 @@ elif SETTINGS == '32px_small':
     # These settings are good for a 'smaller' model that trains (up to 200K iters)
     # in ~1 day on a GTX 1080 (probably equivalent to 2 K40s).
     DIM_PIX_1    = 128
-    PIX1_FILT_SIZE = 3
     DIM_1        = 64
     DIM_2        = 128
     DIM_3        = 256
@@ -177,7 +175,6 @@ elif SETTINGS == '32px_big':
     # These settings are good for a 'smaller' model that trains (up to 200K iters)
     # in ~1 day on a GTX 1080 (probably equivalent to 2 K40s).
     DIM_PIX_1    = 256
-    PIX1_FILT_SIZE = 3
     DIM_1        = 128
     DIM_2        = 256
     DIM_3        = 512
@@ -238,7 +235,6 @@ elif SETTINGS == '64px':
     HIGHER_LEVEL_PIXCNN = True
 
     DIM_PIX_1    = 128
-    PIX1_FILT_SIZE = 7
     DIM_1        = 64
     DIM_2        = 128
     DIM_3        = 256
@@ -410,11 +406,17 @@ def Dec1(latents, images):
         # Warning! Because of the masked convolutions it's very important that masked_images comes first in this concat
         output = tf.concat(1, [masked_images, output])
 
-        output = ResidualBlock('Dec1.Pix2Res', input_dim=2*DIM_1,   output_dim=DIM_PIX_1, filter_size=PIX1_FILT_SIZE, mask_type=('b', N_CHANNELS), inputs_stdev=1, inputs=output)
         if PIXCNN_ONLY:
             for i in xrange(9):
-                output = ResidualBlock('Dec1.Pix2Res_'+str(i), input_dim=DIM_PIX_1,   output_dim=DIM_PIX_1, filter_size=PIX1_FILT_SIZE, mask_type=('b', N_CHANNELS), inputs_stdev=1,          inputs=output)
-        output = ResidualBlock('Dec1.Pix3Res', input_dim=DIM_PIX_1, output_dim=DIM_PIX_1, filter_size=1, mask_type=('b', N_CHANNELS), inputs_stdev=np.sqrt(2), inputs=output)
+                inp_dim = (2*DIM_1 if i==0 else DIM_PIX_1)
+                output = ResidualBlock('Dec1.ExtraPixCNN_'+str(i), input_dim=inp_dim, output_dim=DIM_PIX_1, filter_size=5, mask_type=('b', N_CHANNELS), inputs_stdev=1,          inputs=output)
+
+        if SETTINGS == '64px':
+            output = ResidualBlock('Dec1.Pix2Res', input_dim=2*DIM_1, output_dim=DIM_PIX_1, filter_size=5, mask_type=('b', N_CHANNELS), inputs_stdev=1, inputs=output)
+            output = ResidualBlock('Dec1.Pix3Res', input_dim=DIM_PIX_1,   output_dim=DIM_PIX_1, filter_size=3, mask_type=('b', N_CHANNELS), inputs_stdev=1, inputs=output)
+        else:
+            output = ResidualBlock('Dec1.Pix2Res', input_dim=2*DIM_1, output_dim=DIM_PIX_1, filter_size=3, mask_type=('b', N_CHANNELS), inputs_stdev=1, inputs=output)
+            output = ResidualBlock('Dec1.Pix3Res', input_dim=DIM_PIX_1, output_dim=DIM_PIX_1, filter_size=1, mask_type=('b', N_CHANNELS), inputs_stdev=1, inputs=output)
 
         output = lib.ops.conv2d.Conv2D('Dec1.Out', input_dim=DIM_PIX_1, output_dim=256*N_CHANNELS, filter_size=1, mask_type=('b', N_CHANNELS), he_init=False, inputs=output)
 
