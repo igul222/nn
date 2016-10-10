@@ -16,7 +16,7 @@ except ImportError:
 
 import tflib as lib
 import tflib.debug
-import tflib.train_loop
+import tflib.train_loop_2
 import tflib.ops.kl_unit_gaussian
 import tflib.ops.kl_gaussian_gaussian
 import tflib.ops.conv2d
@@ -37,7 +37,7 @@ from scipy.misc import imsave
 import time
 import functools
 
-DATASET = 'imagenet_64' # mnist_256, lsun_32, lsun_64, imagenet_64
+DATASET = 'lsun_64' # mnist_256, lsun_32, lsun_64, imagenet_64
 SETTINGS = '64px' # mnist_256, 32px_small, 32px_big, 64px
 
 if SETTINGS == 'mnist_256':
@@ -892,41 +892,18 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
         staircase=True
     )
 
-    lib.train_loop.train_loop(
+
+    lib.train_loop_2.train_loop(
         session=session,
         inputs=[total_iters, all_images],
-        inject_total_iters=True,
+        inject_iteration=True,
         cost=full_cost,
+        stop_after=TIMES['stop_after'],
         prints=prints,
         optimizer=tf.train.AdamOptimizer(decayed_lr),
         train_data=train_data,
         test_data=dev_data,
         callback=generate_and_save_samples,
-        times=TIMES,
-        save_params=True,
-        # profile=True
-        # debug_mode=True
+        callback_every=TIMES['callback_every'],
+        test_every=TIMES['test_every'],
     )
-
-    # tf.train.Saver().restore(session, "/home/ishaan/experiments/resnet_mnist256_latentDim2_noPix_1470350613/params_iters100000_time7665.89819646.ckpt")
-    # print "Model restored."
-
-    # all_zs = []
-    # targets = []
-    # for (_images,_targets) in test_data():
-    #     _z = enc_fn(_images)
-    #     all_zs.append(_z)
-    #     targets.append(_targets)
-    # _z = np.concatenate(all_zs, axis=0)
-    # targets = np.concatenate(targets, axis=0)
-    # import matplotlib
-    # matplotlib.use('Agg')
-    # import matplotlib.pyplot as plt
-    # x, y = _z.T
-    # # x = np.random.rand(N)
-    # # y = np.random.rand(N)
-    # colors = targets
-    # print colors[:50]
-    # area = 5 #np.pi * (15 * np.random.rand(N))**2  # 0 to 15 point radiuses
-    # plt.scatter(x, y, s=area, c=colors, alpha=0.5)
-    # plt.savefig('plot.png')

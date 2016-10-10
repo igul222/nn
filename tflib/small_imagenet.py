@@ -6,7 +6,8 @@ def make_generator(path, n_files, batch_size):
     def get_epoch():
         images = np.zeros((batch_size, 3, 64, 64), dtype='int32')
         files = range(n_files)
-        np.random.shuffle(files)
+        random_state = np.random.RandomState(42)
+        random_state.shuffle(files)
         for n, i in enumerate(files):
             image = scipy.misc.imread("{}/{}.png".format(path, str(i+1).zfill(len(str(n_files)))))
             images[n % batch_size] = image.transpose(2,0,1)
