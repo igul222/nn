@@ -29,7 +29,7 @@ def train_loop(
     callback_every=None,
     inject_iteration=False,
     optimizer=tf.train.AdamOptimizer(),
-    save_every=10
+    save_every=1000
     ):
 
     prints = [('cost', cost)] + prints
