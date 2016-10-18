@@ -174,7 +174,8 @@ def train_loop(
         try:
             input_vals = train_generator.next()
         except StopIteration:
-            input_vals = train_generator = train_data()
+            train_generator = train_data()
+            input_vals = train_generator.next()
             train_generator.next()
             _vars['epoch'] += 1
 
@@ -193,7 +194,7 @@ def train_loop(
         if (test_data is not None) and _vars['iteration'] % test_every == (test_every-1):
             if inject_iteration:
                 test_outputs = [
-                    eval_fn([np.int32(_vars['iteration'])] + list(input_vals)) 
+                    eval_fn([np.int32(_vars['iteration'])] + list(input_vals))
                     for input_vals in test_data()
                 ]
             else:
@@ -203,7 +204,7 @@ def train_loop(
                 ]
             mean_test_outputs = np.array(test_outputs).mean(axis=0)
 
-            log(mean_test_outputs, True, _vars)
+            log(mean_test_outputs, True, _vars, [])
 
         if (callback is not None) and _vars['iteration'] % callback_every == (callback_every-1):
             tag = "iter{}".format(_vars['iteration'])
