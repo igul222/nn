@@ -228,7 +228,7 @@ elif SETTINGS == '64px':
     # one_level uses EncFull/DecFull for the bottom (and only) level
     MODE = 'two_level'
 
-    EMBED_INPUTS = False
+    EMBED_INPUTS = True
 
     # Turn on/off the bottom-level PixelCNN in Dec1/DecFull
     PIXEL_LEVEL_PIXCNN = True
@@ -366,11 +366,17 @@ def Enc1(images):
     output = images
 
     if SETTINGS == '64px':
-        # output = lib.ops.conv2d.Conv2D('Enc1.Input', input_dim=N_CHANNELS, output_dim=DIM_1, filter_size=5, inputs=output, he_init=False, stride=2)
-        output = lib.ops.conv2d.Conv2D('Enc1.Input', input_dim=N_CHANNELS, output_dim=DIM_1, filter_size=1, inputs=output, he_init=False)
-        output = ResidualBlock('Enc1.InputRes', input_dim=DIM_1, output_dim=DIM_1, filter_size=3, resample='down', inputs_stdev=1, inputs=output)
+        if EMBED_INPUTS:
+            output = lib.ops.conv2d.Conv2D('Enc1.Input', input_dim=N_CHANNELS*DIM_1, output_dim=DIM_1, filter_size=1, inputs=output, he_init=False)
+            output = ResidualBlock('Enc1.InputRes', input_dim=DIM_1, output_dim=DIM_1, filter_size=3, resample='down', inputs_stdev=1, inputs=output)
+        else:
+            output = lib.ops.conv2d.Conv2D('Enc1.Input', input_dim=N_CHANNELS, output_dim=DIM_1, filter_size=1, inputs=output, he_init=False)
+            output = ResidualBlock('Enc1.InputRes', input_dim=DIM_1, output_dim=DIM_1, filter_size=3, resample='down', inputs_stdev=1, inputs=output)
     else:
-        output = lib.ops.conv2d.Conv2D('Enc1.Input', input_dim=N_CHANNELS, output_dim=DIM_1, filter_size=1, inputs=output, he_init=False)
+        if EMBED_INPUTS:
+            output = lib.ops.conv2d.Conv2D('Enc1.Input', input_dim=N_CHANNELS*DIM_1, output_dim=DIM_1, filter_size=1, inputs=output, he_init=False)
+        else:
+            output = lib.ops.conv2d.Conv2D('Enc1.Input', input_dim=N_CHANNELS, output_dim=DIM_1, filter_size=1, inputs=output, he_init=False)
 
     output = ResidualBlock('Enc1.Res1', input_dim=DIM_1, output_dim=DIM_2, filter_size=3, resample='down', inputs_stdev=1,          inputs=output)
     output = ResidualBlock('Enc1.Res2', input_dim=DIM_2, output_dim=DIM_3, filter_size=3, resample='down', inputs_stdev=np.sqrt(2), inputs=output)
@@ -398,7 +404,12 @@ def Dec1(latents, images):
 
     if PIXEL_LEVEL_PIXCNN:
 
-        masked_images = lib.ops.conv2d.Conv2D('Dec1.Pix1', input_dim=N_CHANNELS, output_dim=DIM_1, filter_size=7, inputs=images, mask_type=('a', N_CHANNELS), he_init=False)
+        if EMBED_INPUTS:
+            masked_images = lib.ops.conv2d.Conv2D('Dec1.Pix1', input_dim=N_CHANNELS*DIM_1, output_dim=DIM_1, filter_size=7, inputs=images, mask_type=('a', N_CHANNELS), he_init=False)
+            # masked_images = nonlinearity(masked_images)
+            # masked_images = lib.ops.conv2d.Conv2D('Dec1.Pix1B', input_dim=DIM_1, output_dim=DIM_1, filter_size=5, inputs=masked_images, mask_type=('b', N_CHANNELS), he_init=True)
+        else:
+            masked_images = lib.ops.conv2d.Conv2D('Dec1.Pix1', input_dim=N_CHANNELS, output_dim=DIM_1, filter_size=7, inputs=images, mask_type=('a', N_CHANNELS), he_init=False)
 
         # Make the stdev of output and masked_images match
         output /= np.sqrt(4)
@@ -601,7 +612,7 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
             if EMBED_INPUTS:
                 embedded_images = lib.ops.embedding.Embedding('Embedding', 256, DIM_1, images)
                 embedded_images = tf.transpose(embedded_images, [0,4,1,2,3])
-                embedded_images = tf.reshape(embedded_images, [-1, N_CHANNELS*DIM_1, HEIGHT, WIDTH])
+                embedded_images = tf.reshape(embedded_images, [-1, DIM_1*N_CHANNELS, HEIGHT, WIDTH])
 
             if MODE == 'one_level':
 
@@ -655,7 +666,10 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
             elif MODE == 'two_level':
                 # Layer 1
 
-                mu_and_logsig1 = Enc1(scaled_images)
+                if EMBED_INPUTS:
+                    mu_and_logsig1 = Enc1(embedded_images)
+                else:
+                    mu_and_logsig1 = Enc1(scaled_images)
                 mu1, logsig1, sig1 = split(mu_and_logsig1)
 
                 if VANILLA:
@@ -664,7 +678,10 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
                     eps = tf.random_normal(tf.shape(mu1))
                     latents1 = mu1 + (eps * sig1)
 
-                outputs1 = Dec1(latents1, scaled_images)
+                if EMBED_INPUTS:
+                    outputs1 = Dec1(latents1, embedded_images)
+                else:
+                    outputs1 = Dec1(latents1, scaled_images)
 
                 reconst_cost = tf.reduce_mean(
                     tf.nn.sparse_softmax_cross_entropy_with_logits(
