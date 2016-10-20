@@ -37,7 +37,7 @@ from scipy.misc import imsave
 import time
 import functools
 
-DATASET = 'lsun_64' # mnist_256, lsun_32, lsun_64, imagenet_64
+DATASET = 'imagenet_64' # mnist_256, lsun_32, lsun_64, imagenet_64
 SETTINGS = '64px' # mnist_256, 32px_small, 32px_big, 64px
 
 if SETTINGS == 'mnist_256':
@@ -234,6 +234,7 @@ elif SETTINGS == '64px':
     PIXEL_LEVEL_PIXCNN = True
     HIGHER_LEVEL_PIXCNN = True
 
+    DIM_EMBED    = 16
     DIM_PIX_1    = 128
     DIM_1        = 64
     DIM_2        = 128
@@ -267,10 +268,10 @@ elif SETTINGS == '64px':
     }
 
     VANILLA = False
-    LR = 5e-4
+    LR = 2e-4
 
     LR_DECAY_AFTER = 180000
-    LR_DECAY_FACTOR = 2e-1
+    LR_DECAY_FACTOR = 5e-1
 
     ALPHA1_ITERS = 5000
     ALPHA2_ITERS = 20000
@@ -367,7 +368,7 @@ def Enc1(images):
 
     if SETTINGS == '64px':
         if EMBED_INPUTS:
-            output = lib.ops.conv2d.Conv2D('Enc1.Input', input_dim=N_CHANNELS*DIM_1, output_dim=DIM_1, filter_size=1, inputs=output, he_init=False)
+            output = lib.ops.conv2d.Conv2D('Enc1.Input', input_dim=N_CHANNELS*DIM_EMBED, output_dim=DIM_1, filter_size=1, inputs=output, he_init=False)
             output = ResidualBlock('Enc1.InputRes', input_dim=DIM_1, output_dim=DIM_1, filter_size=3, resample='down', inputs_stdev=1, inputs=output)
         else:
             output = lib.ops.conv2d.Conv2D('Enc1.Input', input_dim=N_CHANNELS, output_dim=DIM_1, filter_size=1, inputs=output, he_init=False)
@@ -405,7 +406,7 @@ def Dec1(latents, images):
     if PIXEL_LEVEL_PIXCNN:
 
         if EMBED_INPUTS:
-            masked_images = lib.ops.conv2d.Conv2D('Dec1.Pix1', input_dim=N_CHANNELS*DIM_1, output_dim=DIM_1, filter_size=7, inputs=images, mask_type=('a', N_CHANNELS), he_init=False)
+            masked_images = lib.ops.conv2d.Conv2D('Dec1.Pix1', input_dim=N_CHANNELS*DIM_EMBED, output_dim=DIM_1, filter_size=7, inputs=images, mask_type=('a', N_CHANNELS), he_init=False)
             # masked_images = nonlinearity(masked_images)
             # masked_images = lib.ops.conv2d.Conv2D('Dec1.Pix1B', input_dim=DIM_1, output_dim=DIM_1, filter_size=5, inputs=masked_images, mask_type=('b', N_CHANNELS), he_init=True)
         else:
@@ -610,9 +611,9 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
 
             scaled_images = (tf.cast(images, 'float32') - 128.) / 64.
             if EMBED_INPUTS:
-                embedded_images = lib.ops.embedding.Embedding('Embedding', 256, DIM_1, images)
+                embedded_images = lib.ops.embedding.Embedding('Embedding', 256, DIM_EMBED, images)
                 embedded_images = tf.transpose(embedded_images, [0,4,1,2,3])
-                embedded_images = tf.reshape(embedded_images, [-1, DIM_1*N_CHANNELS, HEIGHT, WIDTH])
+                embedded_images = tf.reshape(embedded_images, [-1, DIM_EMBED*N_CHANNELS, HEIGHT, WIDTH])
 
             if MODE == 'one_level':
 
