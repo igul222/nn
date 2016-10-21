@@ -107,8 +107,9 @@ def train_loop(
                 train_generator.next()
             dataset_iters += 1
     else:
-        print "Initializing variables"
+        print "Initializing variables..."
         session.run(tf.initialize_all_variables())
+        print "done!"
 
     train_output_entries = [[]]
     

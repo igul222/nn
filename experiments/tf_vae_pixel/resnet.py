@@ -37,7 +37,7 @@ from scipy.misc import imsave
 import time
 import functools
 
-DATASET = 'imagenet_64' # mnist_256, lsun_32, lsun_64, imagenet_64
+DATASET = 'lsun_64' # mnist_256, lsun_32, lsun_64, imagenet_64
 SETTINGS = '64px' # mnist_256, 32px_small, 32px_big, 64px
 
 if SETTINGS == 'mnist_256':
@@ -351,6 +351,14 @@ def ResidualBlock(name, input_dim, output_dim, inputs, inputs_stdev, filter_size
         output = nonlinearity(output)
         output = conv_2(name+'.Conv2', filter_size=filter_size, mask_type=mask_type, inputs=output, he_init=he_init)
     else:
+        # output = nonlinearity(output)
+        # output = conv_1(name+'.Conv1A', filter_size=filter_size, mask_type=mask_type, inputs=output, he_init=he_init)
+        # output = nonlinearity(output)
+        # output = conv_1(name+'.Conv1B', filter_size=filter_size, mask_type=mask_type, inputs=output, he_init=he_init)
+        # # output = pixcnn_gated_nonlinearity(output_a, output_b)
+        # output = nonlinearity(output)
+        # output = conv_2(name+'.Conv2', filter_size=filter_size, mask_type=mask_type, inputs=output, he_init=he_init)
+
         output = nonlinearity(output)
         output_a = conv_1(name+'.Conv1A', filter_size=filter_size, mask_type=mask_type, inputs=output, he_init=he_init)
         output_b = conv_1(name+'.Conv1B', filter_size=filter_size, mask_type=mask_type, inputs=output, he_init=he_init)
@@ -903,6 +911,8 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
             ('kl1', kl_cost_1),
             ('kl2', kl_cost_2),
         ]
+
+    # lr_multiplier = tf.placeholder(tf.float32, shape=None, name='lr_multiplier')
 
     decayed_lr = tf.train.exponential_decay(
         LR,
