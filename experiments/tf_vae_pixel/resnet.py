@@ -601,11 +601,14 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
 
     def split(mu_and_logsig):
         mu, logsig = tf.split(1, 2, mu_and_logsig)
+        # Restrict sigma to [0,1] and mu to [-2, 2]
+        mu = 2. * tf.tanh(mu / 2.)
         sig = 0.5 * (tf.nn.softsign(logsig)+1)
         logsig = tf.log(sig)
         return mu, logsig, sig
-
+ 
     def clamp_logsig_and_sig(logsig, sig):
+        # Early during training (see BETA_ITERS), stop sigma from going too low
         floor = 1. - tf.minimum(1., tf.cast(total_iters, 'float32') / BETA_ITERS)
         log_floor = tf.log(floor)
         return tf.maximum(logsig, log_floor), tf.maximum(sig, floor)
@@ -921,7 +924,6 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
         LR_DECAY_FACTOR,
         staircase=True
     )
-
 
     lib.train_loop_2.train_loop(
         session=session,
