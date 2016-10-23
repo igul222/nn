@@ -268,10 +268,10 @@ elif SETTINGS == '64px':
     }
 
     VANILLA = False
-    LR = 2e-4
+    LR = 1e-3
 
     LR_DECAY_AFTER = 180000
-    LR_DECAY_FACTOR = 5e-1
+    LR_DECAY_FACTOR = 2e-1
 
     ALPHA1_ITERS = 5000
     ALPHA2_ITERS = 20000
