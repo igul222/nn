@@ -658,6 +658,11 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
                     mu_and_logsig1 = Enc1(scaled_images)
                 mu1, logsig1, sig1 = split(mu_and_logsig1)
 
+                if mu1.get_shape().as_list()[2] != LATENTS1_HEIGHT:
+                    raise Exception("LATENTS1_HEIGHT doesn't match mu1 shape!")
+                if mu1.get_shape().as_list()[3] != LATENTS1_WIDTH:
+                    raise Exception("LATENTS1_WIDTH doesn't match mu1 shape!")
+
                 if VANILLA:
                     latents1 = mu1
                 else:
