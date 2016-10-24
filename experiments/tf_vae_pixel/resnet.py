@@ -351,14 +351,6 @@ def ResidualBlock(name, input_dim, output_dim, inputs, inputs_stdev, filter_size
         output = nonlinearity(output)
         output = conv_2(name+'.Conv2', filter_size=filter_size, mask_type=mask_type, inputs=output, he_init=he_init)
     else:
-        # output = nonlinearity(output)
-        # output = conv_1(name+'.Conv1A', filter_size=filter_size, mask_type=mask_type, inputs=output, he_init=he_init)
-        # output = nonlinearity(output)
-        # output = conv_1(name+'.Conv1B', filter_size=filter_size, mask_type=mask_type, inputs=output, he_init=he_init)
-        # # output = pixcnn_gated_nonlinearity(output_a, output_b)
-        # output = nonlinearity(output)
-        # output = conv_2(name+'.Conv2', filter_size=filter_size, mask_type=mask_type, inputs=output, he_init=he_init)
-
         output = nonlinearity(output)
         output_a = conv_1(name+'.Conv1A', filter_size=filter_size, mask_type=mask_type, inputs=output, he_init=he_init)
         output_b = conv_1(name+'.Conv1B', filter_size=filter_size, mask_type=mask_type, inputs=output, he_init=he_init)
@@ -415,8 +407,6 @@ def Dec1(latents, images):
 
         if EMBED_INPUTS:
             masked_images = lib.ops.conv2d.Conv2D('Dec1.Pix1', input_dim=N_CHANNELS*DIM_EMBED, output_dim=DIM_1, filter_size=7, inputs=images, mask_type=('a', N_CHANNELS), he_init=False)
-            # masked_images = nonlinearity(masked_images)
-            # masked_images = lib.ops.conv2d.Conv2D('Dec1.Pix1B', input_dim=DIM_1, output_dim=DIM_1, filter_size=5, inputs=masked_images, mask_type=('b', N_CHANNELS), he_init=True)
         else:
             masked_images = lib.ops.conv2d.Conv2D('Dec1.Pix1', input_dim=N_CHANNELS, output_dim=DIM_1, filter_size=7, inputs=images, mask_type=('a', N_CHANNELS), he_init=False)
 
@@ -459,19 +449,12 @@ def Enc2(latents):
     output = lib.ops.conv2d.Conv2D('Enc2.Input', input_dim=LATENT_DIM_1, output_dim=DIM_3, filter_size=1, inputs=output, he_init=False)
 
     output = ResidualBlock('Enc2.Res1', input_dim=DIM_3, output_dim=DIM_4, filter_size=3, resample='down', inputs_stdev=1,          he_init=True, inputs=output)
-    # output = ResidualBlock('Enc2.Res2', input_dim=DIM_4, output_dim=DIM_4, filter_size=3, resample=None,   inputs_stdev=np.sqrt(2), he_init=True, inputs=output)
+    output = ResidualBlock('Enc2.Res2', input_dim=DIM_4, output_dim=DIM_4, filter_size=3, resample=None,   inputs_stdev=np.sqrt(2), he_init=True, inputs=output)
 
-    output = tf.reshape(output, [-1, 4*4*DIM_4])
-    output = tf.nn.elu(output)
-    output = lib.ops.linear.Linear('Enc2.ConvToFC', input_dim=4*4*DIM_4, output_dim=DIM_5, inputs=output)
-    output = tf.nn.elu(output)
+    # global mean pool and linear map to output
+    output = tf.reduce_mean(output, reduction_indices=[2,3])
+    output = lib.ops.linear.Linear('Enc2.Output', input_dim=DIM_4, output_dim=2*LATENT_DIM_2, inputs=output, initialization='glorot')
 
-    # We implement an FC residual block as a conv over a 1x1 featuremap
-    # output = tf.reshape(output, [-1, DIM_5, 1, 1])
-    # output = ResidualBlock('Enc2.Res3', input_dim=DIM_5, output_dim=DIM_5, filter_size=1, inputs_stdev=np.sqrt(3), he_init=True, inputs=output)
-    # output = tf.reshape(output, [-1, DIM_5])
-
-    output = lib.ops.linear.Linear('Enc2.Output', input_dim=DIM_5, output_dim=2*LATENT_DIM_2, inputs=output, initialization='glorot')
     return output
 
 def Dec2(latents, targets):
@@ -480,22 +463,13 @@ def Dec2(latents, targets):
         return tf.zeros(tf.pack([batch_size, 2*LATENT_DIM_1, LATENTS1_HEIGHT, LATENTS1_WIDTH]), tf.float32)
 
     output = tf.clip_by_value(latents, -50., 50.)
-    output = lib.ops.linear.Linear('Dec2.Input', input_dim=LATENT_DIM_2, output_dim=DIM_5, inputs=output)
-    output = tf.nn.elu(output)
 
-    # output = tf.reshape(output, [-1, DIM_5, 1, 1])
-    # output = ResidualBlock('Dec2.Res1', input_dim=DIM_5, output_dim=DIM_5, filter_size=1, inputs_stdev=1, he_init=True, inputs=output)
-    # output = tf.reshape(output, [-1, DIM_5])
+    # linear map to DIM_4 and repeat across 4x4 spatial grid
+    output = lib.ops.linear.Linear('Dec2.Input', input_dim=LATENT_DIM_2, output_dim=DIM_4, inputs=output)
+    output = tf.tile(tf.reshape(output, [-1, DIM_4, 1, 1]), [1, 1, 4, 4])
 
-    output = lib.ops.linear.Linear('Dec2.FCToConv', input_dim=DIM_5, output_dim=4*4*DIM_4, inputs=output)
-
-    output = tf.reshape(output, [-1, DIM_4, 4, 4])
-
-    # output = ResidualBlock('Dec2.Res2', input_dim=DIM_4, output_dim=DIM_4, filter_size=3, resample=None, inputs_stdev=np.sqrt(2), he_init=True, inputs=output)
+    output = ResidualBlock('Dec2.Res1', input_dim=DIM_4, output_dim=DIM_4, filter_size=3, resample=None, inputs_stdev=np.sqrt(3), he_init=True, inputs=output)
     output = ResidualBlock('Dec2.Res3', input_dim=DIM_4, output_dim=DIM_3, filter_size=3, resample='up', inputs_stdev=np.sqrt(3), he_init=True, inputs=output)
-
-    if WIDTH == 28:
-        output = tf.slice(output, [0, 0, 0, 0], [-1, -1, 7, 7])
 
     if HIGHER_LEVEL_PIXCNN:
 
