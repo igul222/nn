@@ -4,7 +4,10 @@ Ishaan Gulrajani
 """
 
 import os, sys
-sys.path.append(os.environ['ISHAAN_NN_LIB'])
+if 'ISHAAN_NN_LIB' in os.environ:
+    sys.path.append(os.environ['ISHAAN_NN_LIB'])
+else:
+    sys.path.append(os.getcwd())
 
 N_GPUS = 1
 
