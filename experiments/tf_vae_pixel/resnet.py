@@ -4,7 +4,7 @@ Ishaan Gulrajani
 """
 
 import os, sys
-sys.path.append('/home/faruk/LSUN64/nn/')
+sys.path.append(os.environ['ISHAAN_NN_LIB'])
 
 N_GPUS = 2
 
