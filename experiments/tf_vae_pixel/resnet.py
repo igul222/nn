@@ -4,9 +4,9 @@ Ishaan Gulrajani
 """
 
 import os, sys
-sys.path.append(os.getcwd())
+sys.path.append('/home/faruk/LSUN64/nn/')
 
-N_GPUS = 1
+N_GPUS = 2
 
 try: # This only matters on Ishaan's computer
     import experiment_tools
@@ -37,7 +37,7 @@ from scipy.misc import imsave
 import time
 import functools
 
-DATASET = 'lsun_64' # mnist_256, lsun_32, lsun_64, imagenet_64
+DATASET = 'imagenet_64' # mnist_256, lsun_32, lsun_64, imagenet_64
 SETTINGS = '64px' # mnist_256, 32px_small, 32px_big, 64px
 
 if SETTINGS == 'mnist_256':
@@ -282,8 +282,8 @@ elif SETTINGS == '64px':
     N_CHANNELS = 3
     HEIGHT = 64
     WIDTH = 64
-    LATENTS1_WIDTH = 8
-    LATENTS1_HEIGHT = 8
+    LATENTS1_WIDTH = 8*2
+    LATENTS1_HEIGHT = 8*2
 
 
 if DATASET == 'mnist_256':
@@ -379,9 +379,13 @@ def Enc1(images):
         else:
             output = lib.ops.conv2d.Conv2D('Enc1.Input', input_dim=N_CHANNELS, output_dim=DIM_1, filter_size=1, inputs=output, he_init=False)
 
-    output = ResidualBlock('Enc1.Res1', input_dim=DIM_1, output_dim=DIM_2, filter_size=3, resample='down', inputs_stdev=1,          inputs=output)
-    output = ResidualBlock('Enc1.Res2', input_dim=DIM_2, output_dim=DIM_3, filter_size=3, resample='down', inputs_stdev=np.sqrt(2), inputs=output)
-    output = ResidualBlock('Enc1.Res3', input_dim=DIM_3, output_dim=DIM_3, filter_size=3, resample=None,   inputs_stdev=np.sqrt(3), inputs=output)
+    if LATENTS1_HEIGHT == 8:
+	    output = ResidualBlock('Enc1.Res1', input_dim=DIM_1, output_dim=DIM_2, filter_size=3, resample='down', inputs_stdev=1,          inputs=output)
+	    output = ResidualBlock('Enc1.Res2', input_dim=DIM_2, output_dim=DIM_3, filter_size=3, resample='down', inputs_stdev=np.sqrt(2), inputs=output)
+	    output = ResidualBlock('Enc1.Res3', input_dim=DIM_3, output_dim=DIM_3, filter_size=3, resample=None,   inputs_stdev=np.sqrt(3), inputs=output)
+    elif LATENTS1_HEIGHT == 16:
+	    output = ResidualBlock('Enc1.Res1', input_dim=DIM_1, output_dim=DIM_2, filter_size=3, resample='down', inputs_stdev=1,          inputs=output)
+	    output = ResidualBlock('Enc1.Res3', input_dim=DIM_2, output_dim=DIM_3, filter_size=3, resample=None,   inputs_stdev=np.sqrt(3), inputs=output)
 
     output = lib.ops.conv2d.Conv2D('Enc1.Out', input_dim=DIM_3, output_dim=2*LATENT_DIM_1, filter_size=1, inputs=output, he_init=False)
 
@@ -396,9 +400,14 @@ def Dec1(latents, images):
         output = tf.clip_by_value(latents, -50., 50.)
         output = lib.ops.conv2d.Conv2D('Dec1.Input', input_dim=LATENT_DIM_1, output_dim=DIM_3, filter_size=1, inputs=output, he_init=False)
 
-        output = ResidualBlock('Dec1.Res1', input_dim=DIM_3, output_dim=DIM_3, filter_size=3, resample=None, inputs_stdev=1, inputs=output)
-        output = ResidualBlock('Dec1.Res2', input_dim=DIM_3, output_dim=DIM_2, filter_size=3, resample='up', inputs_stdev=np.sqrt(2), inputs=output)
-        output = ResidualBlock('Dec1.Res3', input_dim=DIM_2, output_dim=DIM_1, filter_size=3, resample='up', inputs_stdev=np.sqrt(3), inputs=output)
+        if LATENTS1_HEIGHT == 8:
+            output = ResidualBlock('Dec1.Res1', input_dim=DIM_3, output_dim=DIM_3, filter_size=3, resample=None, inputs_stdev=1, inputs=output)
+	    output = ResidualBlock('Dec1.Res2', input_dim=DIM_3, output_dim=DIM_2, filter_size=3, resample='up', inputs_stdev=np.sqrt(2), inputs=output)
+	    output = ResidualBlock('Dec1.Res3', input_dim=DIM_2, output_dim=DIM_1, filter_size=3, resample='up', inputs_stdev=np.sqrt(3), inputs=output)
+        elif LATENTS1_HEIGHT == 16:
+	    output = ResidualBlock('Dec1.Res1', input_dim=DIM_3, output_dim=DIM_3, filter_size=3, resample=None, inputs_stdev=1, inputs=output)
+	    output = ResidualBlock('Dec1.Res3', input_dim=DIM_3, output_dim=DIM_1, filter_size=3, resample='up', inputs_stdev=np.sqrt(3), inputs=output)
+
 
         if SETTINGS == '64px':
             output = ResidualBlock('Dec1.Res4', input_dim=DIM_1, output_dim=DIM_1, filter_size=3, resample='up', inputs_stdev=np.sqrt(3), inputs=output)
@@ -468,12 +477,18 @@ def Dec2(latents, targets):
     output = lib.ops.linear.Linear('Dec2.Input', input_dim=LATENT_DIM_2, output_dim=DIM_4, inputs=output)
     output = tf.tile(tf.reshape(output, [-1, DIM_4, 1, 1]), [1, 1, 4, 4])
 
-    output = ResidualBlock('Dec2.Res1', input_dim=DIM_4, output_dim=DIM_4, filter_size=3, resample=None, inputs_stdev=np.sqrt(3), he_init=True, inputs=output)
-    output = ResidualBlock('Dec2.Res3', input_dim=DIM_4, output_dim=DIM_3, filter_size=3, resample='up', inputs_stdev=np.sqrt(3), he_init=True, inputs=output)
+    if LATENTS1_HEIGHT == 8:
+        output = ResidualBlock('Dec2.Res1', input_dim=DIM_4, output_dim=DIM_4, filter_size=3, resample=None, inputs_stdev=np.sqrt(3), he_init=True, inputs=output)
+        output = ResidualBlock('Dec2.Res1', input_dim=DIM_4, output_dim=DIM_4, filter_size=3, resample=None, inputs_stdev=np.sqrt(3), he_init=True, inputs=output)
+    elif LATENTS1_HEIGHT == 16:
+        output = ResidualBlock('Dec2.Res3.1', input_dim=DIM_4, output_dim=DIM_3, filter_size=3, resample='up', inputs_stdev=np.sqrt(3), he_init=True, inputs=output)
+        output = ResidualBlock('Dec2.Res3.2', input_dim=DIM_3, output_dim=DIM_3, filter_size=3, resample='up', inputs_stdev=np.sqrt(3), he_init=True, inputs=output)
+        output = ResidualBlock('Dec2.Res3', input_dim=DIM_3, output_dim=DIM_3, filter_size=3, resample=None, inputs_stdev=np.sqrt(3), he_init=True, inputs=output)
 
     if HIGHER_LEVEL_PIXCNN:
 
         masked_targets = lib.ops.conv2d.Conv2D('Dec2.Pix1', input_dim=LATENT_DIM_1, output_dim=DIM_3, filter_size=7, mask_type=('a', PIX_2_N_BLOCKS), he_init=False, inputs=targets)
+	print masked_targets.get_shape().as_list()
 
         # Make the stdev of output and masked_targets match
         output /= np.sqrt(4)
