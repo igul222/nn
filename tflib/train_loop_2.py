@@ -173,6 +173,7 @@ def train_loop(
 
             break
 
+        data_load_start_time = time.time()
         try:
             input_vals = train_generator.next()
         except StopIteration:
@@ -180,6 +181,7 @@ def train_loop(
             input_vals = train_generator.next()
             train_generator.next()
             _vars['epoch'] += 1
+        data_load_time = time.time() - data_load_start_time
 
         if inject_iteration:
             input_vals = [np.int32(_vars['iteration'])] + list(input_vals)
@@ -191,7 +193,7 @@ def train_loop(
         _vars['seconds'] += run_time
         _vars['iteration'] += 1
 
-        log(outputs, False, _vars, [('iter time', run_time)])
+        log(outputs, False, _vars, [('iter time', run_time), ('data time', data_load_time)])
 
         if (test_data is not None) and _vars['iteration'] % test_every == (test_every-1):
             if inject_iteration:
