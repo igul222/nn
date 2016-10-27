@@ -453,10 +453,8 @@ def Enc2(latents):
 
     output = ResidualBlock('Enc2.Res1', input_dim=DIM_3, output_dim=DIM_4, filter_size=3, resample='down', inputs_stdev=1,          he_init=True, inputs=output)
     output = ResidualBlock('Enc2.Res2', input_dim=DIM_4, output_dim=DIM_4, filter_size=3, resample=None,   inputs_stdev=np.sqrt(2), he_init=True, inputs=output)
-
-    # global mean pool and linear map to output
-    output = tf.reduce_mean(output, reduction_indices=[2,3])
-    output = lib.ops.linear.Linear('Enc2.Output', input_dim=DIM_4, output_dim=2*LATENT_DIM_2, inputs=output, initialization='glorot')
+    output = tf.reshape(output, [-1, 4*4*DIM_4])
+    output = lib.ops.linear.Linear('Enc2.Output', input_dim=4*4*DIM_4, output_dim=2*LATENT_DIM_2, inputs=output, initialization='glorot')
 
     return output
 
@@ -466,10 +464,9 @@ def Dec2(latents, targets):
         return tf.zeros(tf.pack([batch_size, 2*LATENT_DIM_1, LATENTS1_HEIGHT, LATENTS1_WIDTH]), tf.float32)
 
     output = tf.clip_by_value(latents, -50., 50.)
+    output = lib.ops.linear.Linear('Dec2.Input', input_dim=LATENT_DIM_2, output_dim=4*4*DIM_4, inputs=output)
 
-    # linear map to DIM_4 and repeat across 4x4 spatial grid
-    output = lib.ops.linear.Linear('Dec2.Input', input_dim=LATENT_DIM_2, output_dim=DIM_4, inputs=output)
-    output = tf.tile(tf.reshape(output, [-1, DIM_4, 1, 1]), [1, 1, 4, 4])
+    output = tf.reshape(output, [-1, DIM_4, 4, 4])
 
     output = ResidualBlock('Dec2.Res1', input_dim=DIM_4, output_dim=DIM_4, filter_size=3, resample=None, inputs_stdev=np.sqrt(3), he_init=True, inputs=output)
     output = ResidualBlock('Dec2.Res3', input_dim=DIM_4, output_dim=DIM_3, filter_size=3, resample='up', inputs_stdev=np.sqrt(3), he_init=True, inputs=output)
