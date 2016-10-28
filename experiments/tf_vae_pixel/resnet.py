@@ -590,6 +590,7 @@ def DecFull(latents, images):
 with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
     total_iters = tf.placeholder(tf.int32, shape=None, name='total_iters')
     all_images = tf.placeholder(tf.int32, shape=[None, N_CHANNELS, HEIGHT, WIDTH], name='all_images')
+    all_latents1 = tf.placeholder(tf.float32, shape=[None, LATENT_DIM_1, LATENTS1_HEIGHT, LATENTS1_WIDTH], name='all_latents1')
 
     def split(mu_and_logsig):
         mu, logsig = tf.split(1, 2, mu_and_logsig)
@@ -606,10 +607,12 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
         return tf.maximum(logsig, log_floor), tf.maximum(sig, floor)
 
     split_images = tf.split(0, len(DEVICES), all_images)
+    split_latents1 = tf.split(0, len(DEVICES), all_latents1)
 
     tower_cost = []
+    tower_outputs1_sample = []
 
-    for device, images in zip(DEVICES, split_images):
+    for device, images, latents1_sample in zip(DEVICES, split_images, split_latents1):
         with tf.device(device):
 
             scaled_images = (tf.cast(images, 'float32') - 128.) / 64.
@@ -689,6 +692,7 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
 
                 if EMBED_INPUTS:
                     outputs1 = Dec1(latents1, embedded_images)
+                    outputs1_sample = Dec1(latents1_sample, embedded_images)
                 else:
                     outputs1 = Dec1(latents1, scaled_images)
 
@@ -752,10 +756,13 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
                     cost = reconst_cost + (alpha1 * kl_cost_1) + (alpha2 * kl_cost_2)
 
             tower_cost.append(cost)
+            tower_outputs1_sample.append(outputs1_sample)
 
     full_cost = tf.reduce_mean(
         tf.concat(0, [tf.expand_dims(x, 0) for x in tower_cost]), 0
     )
+
+    full_outputs1_sample = tf.concat(0, tower_outputs1_sample)
 
     # Sampling
 
@@ -821,18 +828,20 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
         ch_sym = tf.placeholder(tf.int32, shape=None)
         y_sym = tf.placeholder(tf.int32, shape=None)
         x_sym = tf.placeholder(tf.int32, shape=None)
-        logits_sym = tf.reshape(tf.slice(outputs1, tf.pack([0, ch_sym, y_sym, x_sym, 0]), tf.pack([-1, 1, 1, 1, -1])), [-1, 256])
+        logits_sym = tf.reshape(tf.slice(full_outputs1_sample, tf.pack([0, ch_sym, y_sym, x_sym, 0]), tf.pack([-1, 1, 1, 1, -1])), [-1, 256])
 
         def dec1_logits_fn(_latents, _targets, _ch, _y, _x):
             return session.run(logits_sym,
-                               feed_dict={latents1: _latents,
-                                          images: _targets,
+                               feed_dict={all_latents1: _latents,
+                                          all_images: _targets,
                                           ch_sym: _ch,
                                           y_sym: _y,
                                           x_sym: _x,
                                           total_iters: 99999})
 
-        N_SAMPLES = 64
+        N_SAMPLES = 63
+        if N_SAMPLES % N_GPUS != 0:
+            raise Exception("N_SAMPLES must be divisible by N_GPUS")
         HOLD_Z2_CONSTANT = False
         HOLD_EPSILON_1_CONSTANT = False
         HOLD_EPSILON_PIXELS_CONSTANT = False
@@ -868,11 +877,13 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
             for y in xrange(HEIGHT):
                 for x in xrange(WIDTH):
                     for ch in xrange(N_CHANNELS):
+                        # start_time = time.time()
                         logits = dec1_logits_fn(z1, pixels, ch, y, x)
                         probs = np.exp(logits - np.max(logits, axis=-1, keepdims=True))
                         probs = probs / np.sum(probs, axis=-1, keepdims=True)
                         cdf = np.cumsum(probs, axis=-1)
                         pixels[:,ch,y,x] = np.argmax(cdf >= epsilon_pixels[:,ch,y,x,None], axis=-1)
+                        # print time.time() - start_time
 
             # Save them
             def color_grid_vis(X, nh, nw, save_path):
