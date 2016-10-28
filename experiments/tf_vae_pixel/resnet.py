@@ -271,10 +271,10 @@ elif SETTINGS == '64px':
     }
 
     VANILLA = False
-    LR = 1e-3
+    LR = 5e-4
 
-    LR_DECAY_AFTER = 150000
-    LR_DECAY_FACTOR = .4
+    LR_DECAY_AFTER = 175000
+    LR_DECAY_FACTOR = .5
 
     ALPHA1_ITERS = 5000
     ALPHA2_ITERS = 20000
@@ -468,7 +468,7 @@ def Enc2(latents):
     output = ResidualBlock('Enc2.Res2', input_dim=DIM_4, output_dim=DIM_4, filter_size=3, resample=None,   inputs_stdev=np.sqrt(2), he_init=True, inputs=output)
 
     output = tf.reshape(output, [-1, 4*4*DIM_4])
-    output = lib.ops.linear.Linear('Enc2.Output', input_dim=4*4*DIM_4, output_dim=2*LATENT_DIM_2, inputs=output, initialization='glorot')
+    output = lib.ops.linear.Linear('Enc2.Output', input_dim=4*4*DIM_4, output_dim=2*LATENT_DIM_2, inputs=output)
 
     return output
 
