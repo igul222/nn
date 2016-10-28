@@ -13,7 +13,7 @@ N_GPUS = 3
 
 try: # This only matters on Ishaan's computer
     import experiment_tools
-    experiment_tools.wait_for_gpu(tf=True, n_gpus=N_GPUS)
+    experiment_tools.wait_for_gpu(tf=True, n_gpus=N_GPUS, skip=[3])
 except ImportError:
     pass
 
@@ -40,7 +40,7 @@ from scipy.misc import imsave
 import time
 import functools
 
-DATASET = 'lsun_64' # mnist_256, lsun_32, lsun_64, imagenet_64
+DATASET = 'imagenet_64' # mnist_256, lsun_32, lsun_64, imagenet_64
 SETTINGS = '64px' # mnist_256, 32px_small, 32px_big, 64px
 
 if SETTINGS == 'mnist_256':
@@ -271,9 +271,9 @@ elif SETTINGS == '64px':
     }
 
     VANILLA = False
-    LR = 5e-4
+    LR = 3e-4
 
-    LR_DECAY_AFTER = 175000
+    LR_DECAY_AFTER = 250000
     LR_DECAY_FACTOR = .5
 
     ALPHA1_ITERS = 5000
@@ -345,7 +345,7 @@ def ResidualBlock(name, input_dim, output_dim, inputs, inputs_stdev, filter_size
     if output_dim==input_dim and resample==None:
         shortcut = inputs # Identity skip-connection
     else:
-        shortcut = conv_shortcut(name+'.Shortcut', input_dim=input_dim, output_dim=output_dim, filter_size=1, mask_type=mask_type, he_init=False, biases=False, inputs=inputs)
+        shortcut = conv_shortcut(name+'.Shortcut', input_dim=input_dim, output_dim=output_dim, filter_size=1, mask_type=mask_type, he_init=False, biases=True, inputs=inputs)
 
     output = inputs
     if mask_type == None:
