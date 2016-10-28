@@ -29,7 +29,7 @@ def train_loop(
     callback_every=None,
     inject_iteration=False,
     optimizer=tf.train.AdamOptimizer(),
-    save_every=1000
+    save_every=2000
     ):
 
     prints = [('cost', cost)] + prints
@@ -95,7 +95,7 @@ def train_loop(
         print "Resuming interrupted train loop session"
         with open(TRAIN_LOOP_FILE, 'r') as f:
             _vars = pickle.load(f)
-        saver.restore(session, PARAMS_FILE)
+        saver.restore(session, os.getcwd()+"/"+PARAMS_FILE)
 
         print "Fast-fowarding dataset generator"
         dataset_iters = 0
@@ -141,20 +141,27 @@ def train_loop(
         # Saving weights takes a while. To minimize risk of interruption during
         # a critical segment, we write weights to a temp file, delete the old
         # file, and rename the temp file.
+
+        start_time = time.time()
         saver.save(session, PARAMS_FILE + '_tmp')
+        print "saver.save time: {}".format(time.time() - start_time)
+        start_time = time.time()
         if os.path.isfile(PARAMS_FILE):
             os.remove(PARAMS_FILE)
         os.rename(PARAMS_FILE+'_tmp', PARAMS_FILE)
-
+        print "move and rename time: {}".format(time.time() - start_time)
+        start_time = time.time()
         with open(TRAIN_OUTPUT_FILE, 'a') as f:
             for entry in train_output_entries[0]:
                 for k,v in entry.items():
                     if isinstance(v, np.generic):
                         entry[k] = np.asscalar(v)
                 f.write(json.dumps(entry) + "\n")
-
+        print "ndjson write time: {}".format(time.time() - start_time)
+        start_time = time.time()
         with open(TRAIN_LOOP_FILE, 'w') as f:
             pickle.dump(_vars, f)
+        print "_vars pickle dump time: {}".format(time.time() - start_time)
 
         train_output_entries[0] = []
 
