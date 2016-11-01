@@ -9,6 +9,7 @@ import json
 import locale
 import os
 import time
+import shutil
 
 locale.setlocale(locale.LC_ALL, '')
 
@@ -29,7 +30,7 @@ def train_loop(
     callback_every=None,
     inject_iteration=False,
     optimizer=tf.train.AdamOptimizer(),
-    save_every=2000
+    save_every=1000
     ):
 
     prints = [('cost', cost)] + prints
@@ -58,12 +59,21 @@ def train_loop(
         locale.format("%d", total_param_count, grouping=True)
     )
 
-    for i in xrange(len(grads_and_vars)):
-        g, v = grads_and_vars[i]
-        if g == None:
-            grads_and_vars[i] = (tf.zeros_like(v), v)
-        else:
-            grads_and_vars[i] = (tf.clip_by_value(g, -1., 1.), v)            
+    # for i in xrange(len(grads_and_vars)):
+    #     g, v = grads_and_vars[i]
+    #     if g == None:
+    #         grads_and_vars[i] = (tf.zeros_like(v), v)
+    #     else:
+    #         grads_and_vars[i] = (tf.clip_by_value(g, -1., 1.), v)
+
+    grads = [g for g,v in grads_and_vars]
+    _vars = [v for g,v in grads_and_vars]
+
+    global_norm = tf.global_norm(grads)
+    prints = prints + [('gradnorm', global_norm)]
+
+    grads, global_norm = tf.clip_by_global_norm(grads, 1.0, use_norm=global_norm)
+    grads_and_vars = zip(grads, _vars)
 
     train_op = optimizer.apply_gradients(grads_and_vars)
 
@@ -135,7 +145,7 @@ def train_loop(
                 print_str += "{}:{:.4f}\t".format(k,v)
         print print_str[:-1] # omit the last \t
 
-    def save_train_output_and_params():
+    def save_train_output_and_params(iteration):
         print "Saving output and params..."
 
         # Saving weights takes a while. To minimize risk of interruption during
@@ -150,6 +160,9 @@ def train_loop(
             os.remove(PARAMS_FILE)
         os.rename(PARAMS_FILE+'_tmp', PARAMS_FILE)
         print "move and rename time: {}".format(time.time() - start_time)
+
+        # shutil.copyfile(PARAMS_FILE, PARAMS_FILE+'_'+str(iteration))
+
         start_time = time.time()
         with open(TRAIN_OUTPUT_FILE, 'a') as f:
             for entry in train_output_entries[0]:
@@ -168,7 +181,7 @@ def train_loop(
     while True:
 
         if _vars['iteration'] == stop_after:
-            save_train_output_and_params()
+            save_train_output_and_params(_vars['iteration'])
 
             print "Done!"
 
@@ -222,4 +235,4 @@ def train_loop(
             callback(tag)
 
         if _vars['iteration'] % save_every == (save_every-1):
-            save_train_output_and_params()
+            save_train_output_and_params(_vars['iteration'])

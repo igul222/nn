@@ -43,19 +43,18 @@ import functools
 DATASET = 'lsun256'
 
 DIM_EMBED     = 16
-DIM_256       = 64
-DIM_256_PIX   = 64
 DIM_128       = 64
+DIM_128_PIX   = 128
 DIM_64        = 128
-DIM_64_LATENT = 32
-DIM_64_PIX    = 256
-DIM_32       = 256
-DIM_16       = 384
-DIM_8        = 384
-DIM_8_LATENT = 64
-DIM_8_PIX    = 384
-DIM_4        = 384
-DIM_1_LATENT = 512
+DIM_32        = 256
+DIM_32_LATENT = 48
+DIM_32_PIX    = 384
+DIM_16        = 384
+DIM_8         = 512
+DIM_8_LATENT  = 64
+DIM_8_PIX     = 512
+DIM_4         = 512
+DIM_1_LATENT  = 512
 
 TIMES = {
     'mode': 'iters',
@@ -69,25 +68,25 @@ LR = 2e-4
 LR_DECAY_AFTER = 175000
 LR_DECAY_FACTOR = .5
 
-ALPHA1_ITERS = 5000
-ALPHA2_ITERS = 10000
-ALPHA3_ITERS = 20000
+ALPHA1_ITERS = 10000
+ALPHA2_ITERS = 20000
+ALPHA3_ITERS = 30000
 KL_PENALTY = 1.01
 BETA_ITERS = 1000
 
 BATCH_SIZE = 32
 N_CHANNELS = 3
-HEIGHT = 256
-WIDTH = 256
-LATENTS1_WIDTH = 64
-LATENTS1_HEIGHT = 64
+HEIGHT = 128
+WIDTH = 128
+LATENTS1_WIDTH = 32
+LATENTS1_HEIGHT = 32
 LATENTS2_WIDTH = 8
 LATENTS2_HEIGHT = 8
 
 if DATASET=='lsun256_test':
     train_data, dev_data = lib.lsun256_test.load(BATCH_SIZE)
 elif DATASET=='lsun256':
-    train_data = lib.lsun256.load(BATCH_SIZE)
+    train_data = lib.lsun256.load(BATCH_SIZE, downscale=True)
 
 lib.print_model_settings(locals().copy())
 
@@ -155,34 +154,34 @@ def ResidualBlock(name, input_dim, output_dim, inputs, inputs_stdev, filter_size
 
 def Enc1(images):
     output = images
-    output = lib.ops.conv2d.Conv2D('Enc1.Input', input_dim=N_CHANNELS*DIM_EMBED, output_dim=DIM_256, filter_size=1, inputs=output, he_init=False)
-    output = ResidualBlock('Enc1.Res1', input_dim=DIM_256, output_dim=DIM_128, filter_size=3, resample='down', inputs_stdev=1, inputs=output)
-    output = ResidualBlock('Enc1.Res2', input_dim=DIM_128, output_dim=DIM_128, filter_size=3, resample=None, inputs_stdev=1, inputs=output)
-    output = ResidualBlock('Enc1.Res3', input_dim=DIM_128, output_dim=DIM_64, filter_size=3, resample='down', inputs_stdev=1, inputs=output)
-    output = ResidualBlock('Enc1.Res4', input_dim=DIM_64, output_dim=DIM_64, filter_size=3, resample=None, inputs_stdev=1, inputs=output)
-    output = lib.ops.conv2d.Conv2D('Enc1.Out', input_dim=DIM_64, output_dim=2*DIM_64_LATENT, filter_size=1, inputs=output, he_init=False)
+    output = lib.ops.conv2d.Conv2D('Enc1.Input', input_dim=N_CHANNELS*DIM_EMBED, output_dim=DIM_128, filter_size=1, inputs=output, he_init=False)
+    output = ResidualBlock('Enc1.Res1', input_dim=DIM_128, output_dim=DIM_64, filter_size=3, resample='down', inputs_stdev=1, inputs=output)
+    output = ResidualBlock('Enc1.Res2', input_dim=DIM_64, output_dim=DIM_64, filter_size=3, resample=None, inputs_stdev=1, inputs=output)
+    output = ResidualBlock('Enc1.Res3', input_dim=DIM_64, output_dim=DIM_32, filter_size=3, resample='down', inputs_stdev=1, inputs=output)
+    output = ResidualBlock('Enc1.Res4', input_dim=DIM_32, output_dim=DIM_32, filter_size=3, resample=None, inputs_stdev=1, inputs=output)
+    output = lib.ops.conv2d.Conv2D('Enc1.Out', input_dim=DIM_32, output_dim=2*DIM_32_LATENT, filter_size=1, inputs=output, he_init=False)
     return output
 
 def Dec1(latents, images):
     output = tf.clip_by_value(latents, -15., 15.)
 
-    output = lib.ops.conv2d.Conv2D('Dec1.Input', input_dim=DIM_64_LATENT, output_dim=DIM_64, filter_size=1, inputs=output, he_init=False)
-    output = ResidualBlock('Dec1.Res1', input_dim=DIM_64, output_dim=DIM_64, filter_size=3, resample=None, inputs_stdev=1, inputs=output)
-    output = ResidualBlock('Dec1.Res2', input_dim=DIM_64, output_dim=DIM_128, filter_size=3, resample='up', inputs_stdev=1, inputs=output)
-    output = ResidualBlock('Dec1.Res3', input_dim=DIM_128, output_dim=DIM_128, filter_size=3, resample=None, inputs_stdev=1, inputs=output)
-    output = ResidualBlock('Dec1.Res4', input_dim=DIM_128, output_dim=DIM_256, filter_size=3, resample='up', inputs_stdev=1, inputs=output)
+    output = lib.ops.conv2d.Conv2D('Dec1.Input', input_dim=DIM_32_LATENT, output_dim=DIM_32, filter_size=1, inputs=output, he_init=False)
+    output = ResidualBlock('Dec1.Res1', input_dim=DIM_32, output_dim=DIM_32, filter_size=3, resample=None, inputs_stdev=1, inputs=output)
+    output = ResidualBlock('Dec1.Res2', input_dim=DIM_32, output_dim=DIM_64, filter_size=3, resample='up', inputs_stdev=1, inputs=output)
+    output = ResidualBlock('Dec1.Res3', input_dim=DIM_64, output_dim=DIM_64, filter_size=3, resample=None, inputs_stdev=1, inputs=output)
+    output = ResidualBlock('Dec1.Res4', input_dim=DIM_64, output_dim=DIM_128, filter_size=3, resample='up', inputs_stdev=1, inputs=output)
 
-    masked_images = lib.ops.conv2d.Conv2D('Dec1.Pix1', input_dim=N_CHANNELS*DIM_EMBED, output_dim=DIM_256_PIX, filter_size=5, inputs=images, mask_type=('a', N_CHANNELS), he_init=False)
+    masked_images = lib.ops.conv2d.Conv2D('Dec1.Pix1', input_dim=N_CHANNELS*DIM_EMBED, output_dim=DIM_128_PIX, filter_size=5, inputs=images, mask_type=('a', N_CHANNELS), he_init=False)
 
     # Make the stdev of output and masked_images match
     output /= np.sqrt(4)
     # Warning! Because of the masked convolutions it's very important that masked_images comes first in this concat
     output = tf.concat(1, [masked_images, output])
 
-    output = ResidualBlock('Dec1.Pix2Res', input_dim=DIM_256_PIX+DIM_256, output_dim=DIM_256_PIX, filter_size=3, mask_type=('b', N_CHANNELS), inputs_stdev=1, inputs=output)
-    output = ResidualBlock('Dec1.Pix3Res', input_dim=DIM_256_PIX, output_dim=DIM_256_PIX, filter_size=1, mask_type=('b', N_CHANNELS), inputs_stdev=1, inputs=output)
+    output = ResidualBlock('Dec1.Pix2Res', input_dim=DIM_128_PIX+DIM_128, output_dim=DIM_128_PIX, filter_size=3, mask_type=('b', N_CHANNELS), inputs_stdev=1, inputs=output)
+    output = ResidualBlock('Dec1.Pix3Res', input_dim=DIM_128_PIX, output_dim=DIM_128_PIX, filter_size=1, mask_type=('b', N_CHANNELS), inputs_stdev=1, inputs=output)
 
-    output = lib.ops.conv2d.Conv2D('Dec1.Out', input_dim=DIM_256_PIX, output_dim=256*N_CHANNELS, filter_size=1, mask_type=('b', N_CHANNELS), he_init=False, inputs=output)
+    output = lib.ops.conv2d.Conv2D('Dec1.Out', input_dim=DIM_128_PIX, output_dim=256*N_CHANNELS, filter_size=1, mask_type=('b', N_CHANNELS), he_init=False, inputs=output)
 
     return tf.transpose(
         tf.reshape(output, [-1, 256, N_CHANNELS, HEIGHT, WIDTH]),
@@ -192,15 +191,13 @@ def Dec1(latents, images):
 def Enc2(latents):
     output = tf.clip_by_value(latents, -15., 15.)
 
-    output = lib.ops.conv2d.Conv2D('Enc2.Input', input_dim=DIM_64_LATENT, output_dim=DIM_64, filter_size=1, inputs=output, he_init=False)
-    output = ResidualBlock('Enc2.InputRes0', input_dim=DIM_64, output_dim=DIM_64, filter_size=3, resample=None, inputs_stdev=1, inputs=output)
-    output = ResidualBlock('Enc2.InputRes', input_dim=DIM_64, output_dim=DIM_32, filter_size=3, resample='down', inputs_stdev=1, inputs=output)
+    output = lib.ops.conv2d.Conv2D('Enc2.Input', input_dim=DIM_32_LATENT, output_dim=DIM_32, filter_size=1, inputs=output, he_init=False)
+    output = ResidualBlock('Enc2.InputRes0', input_dim=DIM_32, output_dim=DIM_32, filter_size=3, resample=None, inputs_stdev=1, inputs=output)
+    output = ResidualBlock('Enc2.InputRes', input_dim=DIM_32, output_dim=DIM_16, filter_size=3, resample='down', inputs_stdev=1, inputs=output)
 
-    output = ResidualBlock('Enc2.Res1Pre', input_dim=DIM_32, output_dim=DIM_32, filter_size=3, resample=None, inputs_stdev=1,          inputs=output)
-    output = ResidualBlock('Enc2.Res1', input_dim=DIM_32, output_dim=DIM_16, filter_size=3, resample='down', inputs_stdev=1,          inputs=output)
-    output = ResidualBlock('Enc2.Res2Pre', input_dim=DIM_16, output_dim=DIM_16, filter_size=3, resample=None, inputs_stdev=1,          inputs=output)
-    output = ResidualBlock('Enc2.Res2', input_dim=DIM_16, output_dim=DIM_8, filter_size=3, resample='down', inputs_stdev=np.sqrt(2), inputs=output)
-    output = ResidualBlock('Enc2.Res3Pre', input_dim=DIM_8, output_dim=DIM_8, filter_size=3, resample=None, inputs_stdev=1,          inputs=output)
+    output = ResidualBlock('Enc2.Res1Pre', input_dim=DIM_16, output_dim=DIM_16, filter_size=3, resample=None, inputs_stdev=1,          inputs=output)
+    output = ResidualBlock('Enc2.Res1', input_dim=DIM_16, output_dim=DIM_8, filter_size=3, resample='down', inputs_stdev=1,          inputs=output)
+    output = ResidualBlock('Enc2.Res2Pre', input_dim=DIM_8, output_dim=DIM_8, filter_size=3, resample=None, inputs_stdev=1,          inputs=output)
     output = ResidualBlock('Enc2.Res3', input_dim=DIM_8, output_dim=DIM_8, filter_size=3, resample=None,   inputs_stdev=np.sqrt(3), inputs=output)
 
     output = lib.ops.conv2d.Conv2D('Enc2.Out', input_dim=DIM_8, output_dim=2*DIM_8_LATENT, filter_size=1, inputs=output, he_init=False)
@@ -219,10 +216,7 @@ def Dec2(latents, targets):
     output = ResidualBlock('Dec2.Res3', input_dim=DIM_16, output_dim=DIM_32, filter_size=3, resample='up', inputs_stdev=np.sqrt(3), inputs=output)
     output = ResidualBlock('Dec2.Res3Post', input_dim=DIM_32, output_dim=DIM_32, filter_size=3, resample=None, inputs_stdev=np.sqrt(3), inputs=output)
 
-    output = ResidualBlock('Dec2.Res4', input_dim=DIM_32, output_dim=DIM_64, filter_size=3, resample='up', inputs_stdev=np.sqrt(3), inputs=output)
-    output = ResidualBlock('Dec2.Res4Post', input_dim=DIM_64, output_dim=DIM_64, filter_size=3, resample=None, inputs_stdev=np.sqrt(3), inputs=output)
-
-    masked_targets = lib.ops.conv2d.Conv2D('Dec2.Pix1', input_dim=DIM_64_LATENT, output_dim=DIM_64, filter_size=5, inputs=targets, mask_type=('a', 1), he_init=False)
+    masked_targets = lib.ops.conv2d.Conv2D('Dec2.Pix1', input_dim=DIM_32_LATENT, output_dim=DIM_32, filter_size=5, inputs=targets, mask_type=('a', 1), he_init=False)
 
     # Make the stdev of output and masked_targets match
     output /= np.sqrt(4)
@@ -230,11 +224,11 @@ def Dec2(latents, targets):
     # Warning! Because of the masked convolutions it's very important that masked_targets comes first in this concat
     output = tf.concat(1, [masked_targets, output])
 
-    output = ResidualBlock('Dec2.Pix2Res', input_dim=2*DIM_64, output_dim=DIM_64_PIX, filter_size=3, mask_type=('b', 1), inputs_stdev=1, inputs=output)
-    output = ResidualBlock('Dec2.Pix3Res', input_dim=DIM_64_PIX,   output_dim=DIM_64_PIX, filter_size=3, mask_type=('b', 1), inputs_stdev=1, inputs=output)
-    output = ResidualBlock('Dec2.Pix4Res', input_dim=DIM_64_PIX,   output_dim=DIM_64_PIX, filter_size=3, mask_type=('b', 1), inputs_stdev=1, inputs=output)
+    output = ResidualBlock('Dec2.Pix2Res', input_dim=2*DIM_32, output_dim=DIM_32_PIX, filter_size=3, mask_type=('b', 1), inputs_stdev=1, inputs=output)
+    output = ResidualBlock('Dec2.Pix3Res', input_dim=DIM_32_PIX,   output_dim=DIM_32_PIX, filter_size=3, mask_type=('b', 1), inputs_stdev=1, inputs=output)
+    output = ResidualBlock('Dec2.Pix4Res', input_dim=DIM_32_PIX,   output_dim=DIM_32_PIX, filter_size=3, mask_type=('b', 1), inputs_stdev=1, inputs=output)
 
-    output = lib.ops.conv2d.Conv2D('Dec2.Out', input_dim=DIM_64_PIX, output_dim=2*DIM_64_LATENT, filter_size=1, mask_type=('b', 1), he_init=False, inputs=output)
+    output = lib.ops.conv2d.Conv2D('Dec2.Out', input_dim=DIM_32_PIX, output_dim=2*DIM_32_LATENT, filter_size=1, mask_type=('b', 1), he_init=False, inputs=output)
 
     return output
 
@@ -290,7 +284,7 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
     def split(mu_and_logsig):
         mu, logsig = tf.split(1, 2, mu_and_logsig)
         # Restrict sigma to [0,1] and mu to [-5, 5]
-        mu = 5. * tf.tanh(mu / 5.)
+        # mu = 5. * tf.tanh(mu / 5.)
         sig = 0.5 * (tf.nn.softsign(logsig)+1)
         logsig = tf.log(sig)
         return mu, logsig, sig
@@ -400,7 +394,7 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
                 )
             )
 
-            kl_cost_1 *= float(DIM_64_LATENT * LATENTS1_WIDTH * LATENTS1_HEIGHT) / (N_CHANNELS * WIDTH * HEIGHT)
+            kl_cost_1 *= float(DIM_32_LATENT * LATENTS1_WIDTH * LATENTS1_HEIGHT) / (N_CHANNELS * WIDTH * HEIGHT)
             kl_cost_2 *= float(DIM_8_LATENT * LATENTS2_WIDTH * LATENTS2_HEIGHT) / (N_CHANNELS * WIDTH * HEIGHT)
             kl_cost_3 *= float(DIM_1_LATENT) / (N_CHANNELS * WIDTH * HEIGHT)
 
