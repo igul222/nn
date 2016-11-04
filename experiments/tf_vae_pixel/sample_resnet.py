@@ -380,7 +380,7 @@ def ResidualBlock(name, input_dim, output_dim, inputs, inputs_stdev, filter_size
     if output_dim==input_dim and resample==None:
         shortcut = inputs # Identity skip-connection
     else:
-        shortcut = conv_shortcut(name+'.Shortcut', input_dim=input_dim, output_dim=output_dim, filter_size=1, mask_type=mask_type, he_init=False, biases=True, inputs=inputs)
+        shortcut = conv_shortcut(name+'.Shortcut', input_dim=input_dim, output_dim=output_dim, filter_size=1, mask_type=mask_type, he_init=False, biases=False, inputs=inputs)
 
     output = inputs
     if mask_type == None:
@@ -840,7 +840,7 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
         def dec2_fn(_latents, _targets):
             return session.run([mu1_prior, logsig1_prior], feed_dict={latents2: _latents, latents1: _targets, total_iters: 99999})
 
-        N_SAMPLES = 1
+        N_SAMPLES = 2
         if N_SAMPLES % N_GPUS != 0:
             raise Exception("N_SAMPLES must be divisible by N_GPUS")
 
