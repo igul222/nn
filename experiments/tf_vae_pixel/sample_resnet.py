@@ -9,7 +9,7 @@ if 'ISHAAN_NN_LIB' in os.environ:
 else:
     sys.path.append(os.getcwd())
 
-N_GPUS = 2
+N_GPUS = 1
 
 try: # This only matters on Ishaan's computer
     import experiment_tools
@@ -40,40 +40,35 @@ from scipy.misc import imsave
 import time
 import functools
 
-def get_dependence_field(i,j, X, num_channels, batch_size,  filter_size, h, w):
 
-    region = np.zeros((batch_size, num_channels, filter_size, filter_size)).astype('float32')
+def get_receptive_area(h,w, receptive_field, i, j):
+    if i < receptive_field:
+        i_min = 0
+        i_end = 2*receptive_field + 1
+        i_res = i
+    elif i >= (h - receptive_field):
+        i_end = h
+        i_min = h - (2*receptive_field + 1)
+        i_res = i - i_min
+    else:
+        i_min = i - receptive_field
+        i_end = i + receptive_field + 1
+        i_res = i - i_min
 
-    Xi_beg = (i - (filter_size//2))
-    Xi_end = filter_size - (filter_size//2) + i
+    if j < receptive_field:
+        j_min = 0
+        j_end = 2*receptive_field + 1
+        j_res = j
+    elif j >= (w - receptive_field):
+        j_end = w
+        j_min = w - (2*receptive_field + 1)
+        j_res = j - j_min
+    else:
+        j_min = j - receptive_field
+        j_end = j + receptive_field + 1
+        j_res = j - j_min
 
-    ri_beg = 0
-    ri_end = filter_size
-
-    Xj_beg = (j - (filter_size//2))
-    Xj_end = filter_size - (filter_size//2) + j
-
-    rj_beg = 0
-    rj_end = filter_size
-
-    if Xi_beg < 0:
-        ri_beg = (filter_size//2) - i
-        Xi_beg = 0
-    elif Xi_end > h:
-        Xi_end = h
-        ri_end = Xi_end - Xi_beg
-
-    if Xj_beg < 0:
-        rj_beg = (filter_size//2) - j
-        Xj_beg = 0
-    elif Xj_end > w:
-        Xj_end = w
-        rj_end = Xj_end - Xj_beg
-
-    region[:, :, ri_beg:ri_end, rj_beg:rj_end] = X[:, :, Xi_beg:Xi_end, Xj_beg:Xj_end]
-    
-    return region
-
+    return i_min, i_end, i_res, j_min, j_end, j_res
 
 DATASET = 'lsun_64' # mnist_256, lsun_32, lsun_64, imagenet_64
 SETTINGS = '64px' # mnist_256, 32px_small, 32px_big, 64px
@@ -840,7 +835,7 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
         def dec2_fn(_latents, _targets):
             return session.run([mu1_prior, logsig1_prior], feed_dict={latents2: _latents, latents1: _targets, total_iters: 99999})
 
-        N_SAMPLES = 2
+        N_SAMPLES = 36
         if N_SAMPLES % N_GPUS != 0:
             raise Exception("N_SAMPLES must be divisible by N_GPUS")
 
@@ -863,7 +858,7 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
         if HOLD_EPSILON_PIXELS_CONSTANT:
           epsilon_pixels[:] = epsilon_pixels[0][None]
 
-        def generate_and_save_samples(tag):
+        def generate_and_save_samples(tag, TEMPERATURE):
             # Draw z1 autoregressively using z2 and epsilon1
             print "Generating z1"
             z1 = np.zeros((N_SAMPLES, LATENT_DIM_1, LATENTS1_HEIGHT, LATENTS1_WIDTH), dtype='float32')
@@ -877,23 +872,16 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
             pixels = np.zeros((N_SAMPLES, N_CHANNELS, HEIGHT, WIDTH)).astype('int32')
             _upsampled_latents = upsample_dec1(z1)
             
-            RECEPTIVE_FIELD_z1 = 11   ## check this
+            RECEPTIVE_FIELD_z1 = 8
             for j in xrange(HEIGHT):
                 print j, 'of', HEIGHT
                 t0 = time.time()
                 for k in xrange(WIDTH):
                     for i in xrange(N_CHANNELS):
-                        pixels_slice = get_dependence_field(j, k, 
-                                                            pixels,
-                                                            pixels.shape[1],
-                                                            N_SAMPLES, 2*RECEPTIVE_FIELD_z1+1,
-                                                            HEIGHT, WIDTH)
-                        latents1_slice = get_dependence_field(j, k, 
-                                                              _upsampled_latents,
-                                                              _upsampled_latents.shape[1],
-                                                              N_SAMPLES, 2*RECEPTIVE_FIELD_z1+1,
-                                                              HEIGHT, WIDTH)
-                        logits = dec1_logits_fn(latents1_slice, pixels_slice)[:,i,RECEPTIVE_FIELD_z1,RECEPTIVE_FIELD_z1]
+                        j_min, j_end, j_res, k_min, k_end, k_res = get_receptive_area(HEIGHT, WIDTH, RECEPTIVE_FIELD_z1, j,k)
+                        pixels_slice = pixels[:, :, j_min:j_end, k_min:k_end]
+                        latents1_slice = _upsampled_latents[:, :, j_min:j_end, k_min:k_end]
+                        logits = dec1_logits_fn(latents1_slice, pixels_slice)[:,i,j_res,k_res]/TEMPERATURE
 
                         probs = np.exp(logits - np.max(logits, axis=-1, keepdims=True))
                         probs = probs / np.sum(probs, axis=-1, keepdims=True)
@@ -919,6 +907,11 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
                 rows -= 1
             color_grid_vis(
                 pixels, rows, N_SAMPLES/rows, 
-                'samples_{}.png'.format(tag)
+                'samples_{}_{}.png'.format(tag, TEMPERATURE)
             )
-    generate_and_save_samples('64_LSUN')
+
+    generate_and_save_samples('64_LSUN', 1.)
+    generate_and_save_samples('64_LSUN', 0.5)
+    generate_and_save_samples('64_LSUN', 0.25)
+    generate_and_save_samples('64_LSUN', 0.125)
+
