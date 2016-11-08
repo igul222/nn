@@ -27,7 +27,7 @@ import time
 import functools
 
 BATCH_SIZE = 100
-ITERS = 1000
+ITERS = 10000
 
 def LeakyReLU(x, alpha):
     return tf.maximum(alpha*x, x)
@@ -36,6 +36,22 @@ def ReLULayer(name, n_in, n_out, inputs, alpha=0.):
     output = lib.ops.linear.Linear(name+'.Linear', n_in, n_out, inputs)
     return LeakyReLU(output, alpha=alpha)
 
+def MinibatchLayer(name, n_in, dim_b, dim_c, inputs):
+    """Salimans et al. 2016"""
+    # input: batch_size, n_in
+    # M: batch_size, dim_b, dim_c
+    m = lib.ops.linear.Linear(name+'.M', n_in, dim_b*dim_c, inputs)
+    m = tf.reshape(m, [-1, dim_b, dim_c])
+    # c: batch_size, batch_size, dim_b
+    c = tf.abs(tf.expand_dims(m, 0) - tf.expand_dims(m, 1))
+    c = tf.reduce_sum(c, reduction_indices=[3])
+    c = tf.exp(-c)
+    # o: batch_size, dim_b
+    o = tf.reduce_mean(c, reduction_indices=[1])
+    o -= 1 # to account for the zero L1 distance of each example with itself
+    # result: batch_size, n_in+dim_b
+    return tf.concat(1, [o, inputs])
+
 def Generator(n_samples):
     noise = tf.random_uniform(
         shape=[n_samples, 100], 
@@ -43,18 +59,21 @@ def Generator(n_samples):
         maxval=np.sqrt(3)
     )
 
-    output = ReLULayer('Generator.1', 100, 1200, noise)
-    output = ReLULayer('Generator.2', 1200, 1200, output)
+    output = ReLULayer('Generator.1', 100, 1024, noise)
+    output = ReLULayer('Generator.2', 1024, 1024, output)
+    output = ReLULayer('Generator.2', 1024, 1024, output)
     
     return tf.nn.sigmoid(
-        lib.ops.linear.Linear('Generator.5', 1200, 784, output)
+        lib.ops.linear.Linear('Generator.5', 1024, 784, output)
     )
 
 def Discriminator(inputs):
-    output = ReLULayer('Discriminator.1', 784, 240, inputs, alpha=0.2)
-    output = ReLULayer('Discriminator.2', 240, 240, output, alpha=0.2)
+    output = ReLULayer('Discriminator.1', 784, 512, inputs)
+    output = ReLULayer('Discriminator.1A', 512, 512, output)
+    output = MinibatchLayer('Discriminator.Minibatch', 512, 32, 32, output)
+    output = ReLULayer('Discriminator.2', 512+32, 512, output)
     # We apply the sigmoid in a later step
-    return lib.ops.linear.Linear('Discriminator.Output', 240, 1, output)#.flatten()
+    return lib.ops.linear.Linear('Discriminator.Output', 512, 1, output)#.flatten()
 
 real_images = tf.placeholder(tf.float32, shape=[BATCH_SIZE, 784])
 
@@ -89,15 +108,16 @@ with tf.Session() as session:
         lib.save_images.save_images(samples.reshape((-1,28,28)), 'samples_{}.jpg'.format(iteration))
 
     gen = inf_train_gen()
+    scorer = inception_score.InceptionScore()
     for iteration in xrange(ITERS):
         _images, _targets = gen.next()
         _disc_cost, _ = session.run([disc_cost, disc_train_op], feed_dict={real_images:_images})
         _gen_cost, _ = session.run([gen_cost, gen_train_op])
 
         if iteration % 100 == 0:
-            print "{}\t{}\t{}".format(iteration, _disc_cost, _gen_cost)
+            print "{}\t{}\t{}\t{}".format(iteration, _disc_cost, _gen_cost, scorer.score(session.run(Generator(10000))))
             generate_samples(iteration)
 
-    print "Inception score: {}".format(
-        inception_score.InceptionScore().score(session.run(Generator(10000)))
-    )
+    # print "Inception score: {}".format(
+    #     inception_score.InceptionScore().score(session.run(Generator(10000)))
+    # )
