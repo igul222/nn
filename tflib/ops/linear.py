@@ -31,8 +31,8 @@ def Linear(
             ).astype('float32')
 
         if initialization == 'lecun' or \
-            (initialization == None and input_dim != output_dim):
-
+            (initialization == None):# and input_dim != output_dim):
+            # disabling orth. init for now because it's too slow
             weight_values = uniform(
                 np.sqrt(1./input_dim),
                 (input_dim, output_dim)

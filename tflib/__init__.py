@@ -29,6 +29,9 @@ def param(name, *args, **kwargs):
 def params_with_name(name):
     return [p for n,p in _params.items() if name in n]
 
+def delete_all_params():
+    _params.clear()
+
 # def search(node, critereon):
 #     """
 #     Traverse the Theano graph starting at `node` and return a list of all nodes
