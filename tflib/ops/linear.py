@@ -8,6 +8,10 @@ def enable_default_weightnorm():
     global _default_weightnorm
     _default_weightnorm = True
 
+def disable_default_weightnorm():
+    global _default_weightnorm
+    _default_weightnorm = False
+
 def Linear(
         name, 
         input_dim, 
@@ -111,7 +115,12 @@ def Linear(
                 norms = tf.sqrt(tf.reduce_sum(tf.square(weight), reduction_indices=[0]))
                 weight = weight * (target_norms / norms)
 
-        result = tf.matmul(inputs, weight)
+        if inputs.get_shape().ndims == 2:
+            result = tf.matmul(inputs, weight)
+        else:
+            reshaped_inputs = tf.reshape(inputs, [-1, input_dim])
+            result = tf.matmul(reshaped_inputs, weight)
+            result = tf.reshape(result, tf.pack(tf.unpack(tf.shape(inputs))[:-1] + [output_dim]))
 
         if biases:
             result = tf.nn.bias_add(
