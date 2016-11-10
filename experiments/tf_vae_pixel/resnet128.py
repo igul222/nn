@@ -9,11 +9,11 @@ if 'ISHAAN_NN_LIB' in os.environ:
 else:
     sys.path.append(os.getcwd())
 
-N_GPUS = 8
+N_GPUS = 3
 
 try: # This only matters on Ishaan's computer
     import experiment_tools
-    experiment_tools.wait_for_gpu(tf=True, n_gpus=N_GPUS)
+    experiment_tools.wait_for_gpu(tf=True, n_gpus=N_GPUS, skip=[3])
 except ImportError:
     pass
 
@@ -80,10 +80,10 @@ DIM_32        = 256
 DIM_32_LATENT = 48
 DIM_32_PIX    = 384
 DIM_16        = 384
-DIM_8         = 384
+DIM_8         = 512
 DIM_8_LATENT  = 64
-DIM_8_PIX     = 384
-DIM_4         = 384
+DIM_8_PIX     = 512
+DIM_4         = 512
 DIM_1_LATENT  = 512
 
 TIMES = {
@@ -91,7 +91,7 @@ TIMES = {
     'print_every': 1,
     'test_every': 10000,
     'stop_after': 400000,
-    'callback_every': 5000
+    'callback_every': 25000
 }
 
 LR = 2e-4
@@ -100,7 +100,7 @@ LR_DECAY_AFTER = 130000
 LR_DECAY_FACTOR = .5
 
 ALPHA1_ITERS = 5000
-ALPHA2_ITERS = 10000
+ALPHA2_ITERS = 15000
 ALPHA3_ITERS = 30000
 KL_PENALTY = 1.01
 BETA_ITERS = 2000
@@ -505,6 +505,7 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
         return session.run([mu2_prior, logsig2_prior], feed_dict={latents3: _latents, latents2: _targets, total_iters: 99999})
 
 
+    N_SAMPLES = 16
     HOLD_Z3_CONSTANT = False
     HOLD_EPSILON_2_CONSTANT = False
     HOLD_EPSILON_1_CONSTANT = False
@@ -548,14 +549,13 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
             z1_prior_mu, z1_prior_logsig = dec2_fn(z2, z1)
             z1[:,:,y,x] = z1_prior_mu[:,:,y,x] + np.exp(z1_prior_logsig[:,:,y,x]) * epsilon_1[:,:,y,x]
 
-
         # Draw pixels (the images) autoregressively using z1 and epsilon_x
         print "Generating pixels"
         pixels = np.zeros((N_SAMPLES, N_CHANNELS, HEIGHT, WIDTH)).astype('int32')
 
         _upsampled_latents = upsample_fn(z1)
         
-        RECEPTIVE_FIELD_z1 = 4   ## verify this
+        RECEPTIVE_FIELD_z1 = 7   ## verify this
         for j in xrange(HEIGHT):
             print j, 'of', HEIGHT
             for k in xrange(WIDTH):
@@ -591,6 +591,10 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
             'samples_{}.png'.format(tag)
         )
     ###############################################################################################
+
+    # print "restoring and generating samples"
+    # tf.train.Saver().restore(session, '/home/ishaan/params_iters375000_time656493.460698.ckpt')
+    # generate_and_save_samples('x')
 
     # Train!
 
