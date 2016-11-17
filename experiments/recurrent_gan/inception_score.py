@@ -159,8 +159,9 @@ def train_model(graph, session, model):
 def run_model(graph, session, model, data):
     inputs, targets, cost, acc, logits, inception_score = model
     all_logits = []
-    for i in xrange(0, len(data), 1000):
-        all_logits.append(session.run(logits, feed_dict={inputs:data[i:i+1000]}))
+    step = min(1000, len(data))
+    for i in xrange(0, len(data), step):
+        all_logits.append(session.run(logits, feed_dict={inputs:data[i:i+step]}))
     all_logits = np.concatenate(all_logits, axis=0)
     probs = np.exp(all_logits - np.max(all_logits, axis=-1, keepdims=True))
     probs = probs / np.sum(probs, axis=-1, keepdims=True)

@@ -9,11 +9,11 @@ if 'ISHAAN_NN_LIB' in os.environ:
 else:
     sys.path.append(os.getcwd())
 
-N_GPUS = 3
+N_GPUS = 1
 
 try: # This only matters on Ishaan's computer
     import experiment_tools
-    experiment_tools.wait_for_gpu(tf=True, n_gpus=N_GPUS, skip=[3])
+    experiment_tools.wait_for_gpu(tf=True, n_gpus=N_GPUS)
 except ImportError:
     pass
 
@@ -40,8 +40,8 @@ from scipy.misc import imsave
 import time
 import functools
 
-DATASET = 'imagenet_64' # mnist_256, lsun_32, lsun_64, imagenet_64
-SETTINGS = '64px' # mnist_256, 32px_small, 32px_big, 64px
+DATASET = 'lsun_32' # mnist_256, lsun_32, lsun_64, imagenet_64
+SETTINGS = '32px_big' # mnist_256, 32px_small, 32px_big, 64px
 
 if SETTINGS == 'mnist_256':
     # two_level uses Enc1/Dec1 for the bottom level, Enc2/Dec2 for the top level
@@ -214,7 +214,7 @@ elif SETTINGS == '32px_big':
     LR_DECAY_AFTER = 250000
     LR_DECAY_FACTOR = 2e-1
 
-    BATCH_SIZE = 64
+    BATCH_SIZE = 32
     N_CHANNELS = 3
     HEIGHT = 32
     WIDTH = 32
@@ -695,6 +695,7 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
                     outputs1_sample = Dec1(latents1_sample, embedded_images)
                 else:
                     outputs1 = Dec1(latents1, scaled_images)
+                    outputs1_sample = Dec1(latents1_sample, scaled_images)
 
                 reconst_cost = tf.reduce_mean(
                     tf.nn.sparse_softmax_cross_entropy_with_logits(

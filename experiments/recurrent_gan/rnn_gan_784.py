@@ -66,37 +66,46 @@ def MinibatchLayer(name, n_in, dim_b, dim_c, inputs):
 
 def Generator(n_samples):
     noise = tf.random_uniform(
-        shape=[n_samples, 28, 128], 
+        shape=[n_samples, 784, 32], 
         minval=-np.sqrt(3),
         maxval=np.sqrt(3)
     )
 
-    output = lib.ops.gru.GRU('Generator.1', 128, 512, noise)
-    output = lib.ops.gru.GRU('Generator.2', 512, 512, output)
-    output = lib.ops.linear.Linear('Generator.Out', 512, 28, output)
+    output = lib.ops.gru.GRU('Generator.1', 32, 256, noise)
+    # output = lib.ops.gru.GRU('Generator.2', 256, 256, output)
+    output = lib.ops.linear.Linear('Generator.Out', 256, 1, output)
     return tf.nn.sigmoid(tf.reshape(output, [-1, 784]))
 
     # output = ReLULayer('Generator.1', 100, 1024, noise)
     # output = ReLULayer('Generator.2', 1024, 1024, output)
     # output = ReLULayer('Generator.2', 1024, 1024, output)
     
-    return tf.nn.sigmoid(
-        lib.ops.linear.Linear('Generator.5', 1024, 784, output)
-    )
+    # return tf.nn.sigmoid(
+    #     lib.ops.linear.Linear('Generator.5', 1024, 784, output)
+    # )
+
+def PreDiscriminator(inputs):
+    outputs = []
+    for n_rows in [784]:
+        output = tf.reshape(inputs, [-1, n_rows, 1])
+        output = tf.gather(output, tf.random_shuffle(tf.range((784/n_rows)*BATCH_SIZE))[:BATCH_SIZE])
+        output = lib.ops.gru.GRU('Discriminator.GRU_{}'.format(1), 1, 256, output)
+        outputs.append(output)
+    return outputs
 
 def Discriminator(inputs):
     costs_ones = []
     costs_zeros = []
     outputs = []
-    for n_rows in [28]:
-        output = tf.reshape(inputs, [-1, n_rows, 28])
-        output = tf.gather(output, tf.random_shuffle(tf.range((28/n_rows)*BATCH_SIZE))[:BATCH_SIZE])
-        output = lib.ops.gru.GRU('Discriminator.GRU_{}'.format(1), 28, 512, output)
+    for n_rows in [784]:
+        output = tf.reshape(inputs, [-1, n_rows, 1])
+        output = tf.gather(output, tf.random_shuffle(tf.range((784/n_rows)*BATCH_SIZE))[:BATCH_SIZE])
+        output = lib.ops.gru.GRU('Discriminator.GRU_{}'.format(1), 1, 256, output)
         # output = lib.ops.gru.GRU('Discriminator.GRU2', 512, 512, output)
         output = output[:, n_rows-1, :]
-        output = MinibatchLayer('Discriminator.Minibatch_{}'.format(1), 512, 32, 16, output)
-        output = ReLULayer('Discriminator.FC_{}'.format(1), 512+32, 512, output)
-        output = lib.ops.linear.Linear('Discriminator.Output_{}'.format(1), 512, 1, output)
+        output = MinibatchLayer('Discriminator.Minibatch_{}'.format(1), 256, 32, 16, output)
+        output = ReLULayer('Discriminator.FC_{}'.format(1), 256+32, 256, output)
+        output = lib.ops.linear.Linear('Discriminator.Output_{}'.format(1), 256, 1, output)
         cost_ones = tf.nn.sigmoid_cross_entropy_with_logits(output, tf.ones_like(output))
         cost_zeros = tf.nn.sigmoid_cross_entropy_with_logits(output, tf.zeros_like(output))
         costs_ones.append(cost_ones)
@@ -167,7 +176,7 @@ with tf.Session() as session:
         # gc2s.append(gc2)
         # gc3s.append(gc3)
 
-        if iteration % 100 == 0:
+        if iteration % 1 == 0:
             print "iter:{}\tdisc:{:.3f}\tgen:{:.3f}\tinception:{:.3f}\ttime:{:.3f}".format(
                 iteration, 
                 np.mean(disc_costs), 
@@ -184,4 +193,4 @@ with tf.Session() as session:
             # gc1s = []
             # gc2s = []
             # gc3s = []
-            generate_samples(iteration)
+            # generate_samples(iteration)

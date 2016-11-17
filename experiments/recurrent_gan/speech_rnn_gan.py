@@ -17,6 +17,7 @@ import tflib.ops.linear
 import tflib.ops.rnn
 import tflib.ops.gru
 
+import tflib.audio_dataset
 import tflib.mnist
 import tflib.save_images
 
@@ -24,9 +25,18 @@ import numpy as np
 import tensorflow as tf
 import scipy.misc
 from scipy.misc import imsave
+import scipy.io.wavfile
 
 import time
 import functools
+
+DATA_PATH = '/media/seagate/blizzard/parts'
+N_FILES = 141703
+
+N_FRAMES = 28 # How many 'frames' to include in each truncated BPTT pass
+FRAME_SIZE = 28 # How many samples per frame
+SEQ_LEN = N_FRAMES * FRAME_SIZE # Total length (# of samples) of each truncated BPTT sequence
+
 
 BATCH_SIZE = 100
 ITERS = 10000
@@ -74,15 +84,15 @@ def Generator(n_samples):
     output = lib.ops.gru.GRU('Generator.1', 128, 512, noise)
     output = lib.ops.gru.GRU('Generator.2', 512, 512, output)
     output = lib.ops.linear.Linear('Generator.Out', 512, 28, output)
-    return tf.nn.sigmoid(tf.reshape(output, [-1, 784]))
+    return tf.reshape(output, [-1, 784])
 
     # output = ReLULayer('Generator.1', 100, 1024, noise)
     # output = ReLULayer('Generator.2', 1024, 1024, output)
     # output = ReLULayer('Generator.2', 1024, 1024, output)
     
-    return tf.nn.sigmoid(
-        lib.ops.linear.Linear('Generator.5', 1024, 784, output)
-    )
+    # return tf.tanh(
+    #     lib.ops.linear.Linear('Generator.5', 1024, 784, output)
+    # )
 
 def Discriminator(inputs):
     costs_ones = []
@@ -136,11 +146,24 @@ with tf.Session() as session:
 
     session.run(tf.initialize_all_variables())
 
+    gen = inf_train_gen()
+    gen = lib.audio_dataset.feed_epoch(DATA_PATH, N_FILES, BATCH_SIZE, SEQ_LEN, 0, 0, 0)
+
     def generate_samples(iteration):
         samples = session.run(fake_images)
-        lib.save_images.save_images(samples.reshape((-1,28,28)), 'samples_{}.jpg'.format(iteration))
+        real_samples, _ = gen.next()
+        lib.save_images.save_images((samples.reshape((-1,28,28))/2.)+0.5, 'samples_{}.jpg'.format(iteration))
+        lib.save_images.save_images((real_samples.reshape((-1,28,28))/2.)+0.5, 'reals_{}.jpg'.format(iteration))
+        # def write_audio_file(name, data):
+        #     data = data.astype('float32')
+        #     data -= data.min()
+        #     data /= data.max()
+        #     data -= 0.5
+        #     data *= 0.95
+        #     scipy.io.wavfile.write(name+'.wav', 16000, data)
+        # for i in xrange(10):
+        #     write_audio_file('sample_{}_{}'.format(iteration, i), samples[i])
 
-    gen = inf_train_gen()
     lib.ops.linear.disable_default_weightnorm()
     scorer = inception_score.InceptionScore()
     lib.ops.linear.enable_default_weightnorm()
@@ -151,7 +174,7 @@ with tf.Session() as session:
     # gc2s = []
     # gc3s = []
     for iteration in xrange(ITERS):
-        _images, _targets = gen.next()
+        _images, _reset = gen.next()
 
         start_time = time.time()
         # _images, _targets = gen.next()

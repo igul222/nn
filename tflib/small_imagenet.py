@@ -17,8 +17,8 @@ def make_generator(path, n_files, batch_size):
 
 def load(batch_size):
     return (
-        make_generator('/home/ishaan/imagenet64/train_64x64', 1281149, batch_size),
-        make_generator('/home/ishaan/imagenet64/valid_64x64', 49999, batch_size)
+        make_generator('/home/ishaan/data/imagenet64/train_64x64', 1281149, batch_size),
+        make_generator('/home/ishaan/data/imagenet64/valid_64x64', 49999, batch_size)
     )
 
 if __name__ == '__main__':
