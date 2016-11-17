@@ -661,7 +661,7 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
     def split(mu_and_logsig):
         mu, logsig = tf.split(1, 2, mu_and_logsig)
         # Restrict sigma to [0,1] and mu to [-2, 2]
-        mu = 2. * tf.tanh(mu / 2.)
+        # mu = 2. * tf.tanh(mu / 2.)
         sig = 0.5 * (tf.nn.softsign(logsig)+1)
         logsig = tf.log(sig)
         return mu, logsig, sig
@@ -787,6 +787,7 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
 
                 mu1_prior, logsig1_prior, sig1_prior = split(outputs2)
                 logsig1_prior, sig1_prior = clamp_logsig_and_sig(logsig1_prior, sig1_prior)
+                mu1_prior = 2. * tf.nn.softsign(mu1_prior / 2.)
 
                 # Assembly
 
@@ -1013,4 +1014,5 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
         callback=generate_and_save_samples,
         callback_every=TIMES['callback_every'],
         test_every=TIMES['test_every'],
+        save_output=True
     )

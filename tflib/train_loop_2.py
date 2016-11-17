@@ -30,7 +30,8 @@ def train_loop(
     callback_every=None,
     inject_iteration=False,
     optimizer=tf.train.AdamOptimizer(),
-    save_every=1000
+    save_every=1000,
+    save_output=False
     ):
 
     prints = [('cost', cost)] + prints
@@ -64,7 +65,7 @@ def train_loop(
     #     if g == None:
     #         grads_and_vars[i] = (tf.zeros_like(v), v)
     #     else:
-    #         grads_and_vars[i] = (tf.clip_by_value(g, -1., 1.), v)
+    #         grads_and_vars[i] = (tf.clip_by_value(g, -5., 5.), v)
 
     grads = [g for g,v in grads_and_vars]
     _vars = [v for g,v in grads_and_vars]
@@ -72,7 +73,7 @@ def train_loop(
     global_norm = tf.global_norm(grads)
     prints = prints + [('gradnorm', global_norm)]
 
-    grads, global_norm = tf.clip_by_global_norm(grads, 1.0, use_norm=global_norm)
+    grads, global_norm = tf.clip_by_global_norm(grads, 5.0, use_norm=global_norm)
     grads_and_vars = zip(grads, _vars)
 
     train_op = optimizer.apply_gradients(grads_and_vars)
@@ -146,6 +147,9 @@ def train_loop(
         print print_str[:-1] # omit the last \t
 
     def save_train_output_and_params(iteration):
+        if not save_output:
+            return
+
         print "Saving output and params..."
 
         # Saving weights takes a while. To minimize risk of interruption during
@@ -164,6 +168,11 @@ def train_loop(
         # shutil.copyfile(PARAMS_FILE, PARAMS_FILE+'_'+str(iteration))
 
         start_time = time.time()
+        with open(TRAIN_LOOP_FILE, 'w') as f:
+            pickle.dump(_vars, f)
+        print "_vars pickle dump time: {}".format(time.time() - start_time)
+
+        start_time = time.time()
         with open(TRAIN_OUTPUT_FILE, 'a') as f:
             for entry in train_output_entries[0]:
                 for k,v in entry.items():
@@ -171,10 +180,6 @@ def train_loop(
                         entry[k] = np.asscalar(v)
                 f.write(json.dumps(entry) + "\n")
         print "ndjson write time: {}".format(time.time() - start_time)
-        start_time = time.time()
-        with open(TRAIN_LOOP_FILE, 'w') as f:
-            pickle.dump(_vars, f)
-        print "_vars pickle dump time: {}".format(time.time() - start_time)
 
         train_output_entries[0] = []
 
