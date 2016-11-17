@@ -456,9 +456,9 @@ def Enc1(images):
     output = ResidualBlock('Enc1.Res3', input_dim=DIM_3, output_dim=DIM_3, filter_size=3, resample=None,   inputs_stdev=np.sqrt(3), inputs=output)
 
 
-    output = lib.ops.conv2d.Conv2D('Enc1.Out', input_dim=DIM_3, output_dim=2*LATENT_DIM_1, filter_size=1, inputs=output, he_init=False)
+    mu_and_sigma = lib.ops.conv2d.Conv2D('Enc1.Out', input_dim=DIM_3, output_dim=2*LATENT_DIM_1, filter_size=1, inputs=output, he_init=False)
 
-    return output
+    return mu_and_sigma, output
 
 def Dec1(latents, images):
 
@@ -517,14 +517,15 @@ def Dec1(latents, images):
         [0,2,3,4,1]
     )
 
-def Enc2(latents):
-    if PIXCNN_ONLY:
-        batch_size = tf.shape(latents)[0]
-        return tf.zeros(tf.pack([batch_size, 2*LATENT_DIM_2]), tf.float32)
+def Enc2(h1):
+    # if PIXCNN_ONLY:
+    #     batch_size = tf.shape(latents)[0]
+    #     return tf.zeros(tf.pack([batch_size, 2*LATENT_DIM_2]), tf.float32)
 
-    output = tf.clip_by_value(latents, -50., 50.)
+    # output = tf.clip_by_value(latents, -50., 50.)
 
-    output = lib.ops.conv2d.Conv2D('Enc2.Input', input_dim=LATENT_DIM_1, output_dim=DIM_3, filter_size=1, inputs=output, he_init=False)
+    # output = lib.ops.conv2d.Conv2D('Enc2.Input', input_dim=LATENT_DIM_1, output_dim=DIM_3, filter_size=1, inputs=output, he_init=False)
+    output = h1
 
     output = ResidualBlock('Enc2.Res0', input_dim=DIM_3, output_dim=DIM_3, filter_size=3, resample=None, inputs_stdev=1,          he_init=True, inputs=output)
     output = ResidualBlock('Enc2.Res1Pre', input_dim=DIM_3, output_dim=DIM_3, filter_size=3, resample=None, inputs_stdev=1,          he_init=True, inputs=output)
@@ -739,9 +740,9 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
                 # Layer 1
 
                 if EMBED_INPUTS:
-                    mu_and_logsig1 = Enc1(embedded_images)
+                    mu_and_logsig1, h1 = Enc1(embedded_images)
                 else:
-                    mu_and_logsig1 = Enc1(scaled_images)
+                    mu_and_logsig1, h1 = Enc1(scaled_images)
                 mu1, logsig1, sig1 = split(mu_and_logsig1)
 
                 if mu1.get_shape().as_list()[2] != LATENTS1_HEIGHT:
@@ -773,7 +774,7 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
 
                 # No need to inject noise into the encoder, so I pass mu1
                 # instead of latents1 to Enc2
-                mu_and_logsig2 = Enc2(mu1)
+                mu_and_logsig2 = Enc2(h1)
                 mu2, logsig2, sig2 = split(mu_and_logsig2)
 
                 if VANILLA:
