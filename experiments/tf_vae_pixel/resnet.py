@@ -40,8 +40,8 @@ from scipy.misc import imsave
 import time
 import functools
 
-DATASET = 'lsun_32' # mnist_256, lsun_32, lsun_64, imagenet_64
-SETTINGS = '32px_big' # mnist_256, 32px_small, 32px_big, 64px
+DATASET = 'lsun_64' # mnist_256, lsun_32, lsun_64, imagenet_64
+SETTINGS = '64px_small' # mnist_256, 32px_small, 32px_big, 64px_small, 64px_big
 
 if SETTINGS == 'mnist_256':
     # two_level uses Enc1/Dec1 for the bottom level, Enc2/Dec2 for the top level
@@ -221,8 +221,73 @@ elif SETTINGS == '32px_big':
     LATENTS1_HEIGHT = 8
     LATENTS1_WIDTH = 8
 
+elif SETTINGS == '64px_small':
+    # WARNING! Some parts of the network architecture have hardcoded checks for
+    # (SETTTINGS == '64px'), so if you just copy these settings under a new
+    # label things will be different! TODO maybe fix this eventually.
 
-elif SETTINGS == '64px':
+    # two_level uses Enc1/Dec1 for the bottom level, Enc2/Dec2 for the top level
+    # one_level uses EncFull/DecFull for the bottom (and only) level
+    MODE = 'two_level'
+
+    EMBED_INPUTS = True
+
+    # Turn on/off the bottom-level PixelCNN in Dec1/DecFull
+    PIXEL_LEVEL_PIXCNN = True
+    HIGHER_LEVEL_PIXCNN = True
+
+    DIM_EMBED    = 16
+    DIM_PIX_1    = 128
+    DIM_0        = 64
+    DIM_1        = 64
+    DIM_2        = 128
+    DIM_3        = 256
+    LATENT_DIM_1 = 64
+    DIM_PIX_2    = 512
+
+    DIM_4        = 512
+    LATENT_DIM_2 = 512
+
+    PIXCNN_ONLY = False
+    # Uncomment for PixelCNN only (NO VAE)
+    # print "WARNING PIXCNN ONLY"
+    # PIXCNN_ONLY = True
+    # DIM_PIX_1    = 128
+    # PIX1_FILT_SIZE = 3
+
+    # In Dec2, we break each spatial location into N blocks (analogous to channels
+    # in the original PixelCNN) and model each spatial location autoregressively
+    # as P(x)=P(x0)*P(x1|x0)*P(x2|x0,x1)... In my experiments values of N > 1
+    # actually hurt performance. Unsure why; might be a bug.
+    PIX_2_N_BLOCKS = 1
+
+    TIMES = {
+        'mode': 'iters',
+        'print_every': 1,
+        'test_every': 10000,
+        'stop_after': 200000,
+        'callback_every': 50000
+    }
+
+    VANILLA = False
+    LR = 1e-3
+
+    LR_DECAY_AFTER = 180000
+    LR_DECAY_FACTOR = .2
+
+    ALPHA1_ITERS = 5000
+    ALPHA2_ITERS = 20000
+    KL_PENALTY = 1.01
+    BETA_ITERS = 1000
+
+    BATCH_SIZE = 64
+    N_CHANNELS = 3
+    HEIGHT = 64
+    WIDTH = 64
+    LATENTS1_WIDTH = 8
+    LATENTS1_HEIGHT = 8
+
+elif SETTINGS == '64px_big':
     # WARNING! Some parts of the network architecture have hardcoded checks for
     # (SETTTINGS == '64px'), so if you just copy these settings under a new
     # label things will be different! TODO maybe fix this eventually.
@@ -369,7 +434,7 @@ def Enc1(images):
 
     output = images
 
-    if SETTINGS == '64px':
+    if '64px' in SETTINGS:
         if EMBED_INPUTS:
             output = lib.ops.conv2d.Conv2D('Enc1.Input', input_dim=N_CHANNELS*DIM_EMBED, output_dim=DIM_0, filter_size=1, inputs=output, he_init=False)
             output = ResidualBlock('Enc1.InputRes0', input_dim=DIM_0, output_dim=DIM_0, filter_size=3, resample=None, inputs_stdev=1, inputs=output)
@@ -411,7 +476,7 @@ def Dec1(latents, images):
         output = ResidualBlock('Dec1.Res3', input_dim=DIM_2, output_dim=DIM_1, filter_size=3, resample='up', inputs_stdev=np.sqrt(3), inputs=output)
         output = ResidualBlock('Dec1.Res3Post', input_dim=DIM_1, output_dim=DIM_1, filter_size=3, resample=None, inputs_stdev=np.sqrt(3), inputs=output)
 
-        if SETTINGS == '64px':
+        if '64px' in SETTINGS:
             output = ResidualBlock('Dec1.Res4', input_dim=DIM_1, output_dim=DIM_0, filter_size=3, resample='up', inputs_stdev=np.sqrt(3), inputs=output)
             output = ResidualBlock('Dec1.Res4Post', input_dim=DIM_0, output_dim=DIM_0, filter_size=3, resample=None, inputs_stdev=np.sqrt(3), inputs=output)
 
@@ -433,7 +498,7 @@ def Dec1(latents, images):
                 inp_dim = (2*DIM_1 if i==0 else DIM_PIX_1)
                 output = ResidualBlock('Dec1.ExtraPixCNN_'+str(i), input_dim=inp_dim, output_dim=DIM_PIX_1, filter_size=5, mask_type=('b', N_CHANNELS), inputs_stdev=1,          inputs=output)
 
-        if SETTINGS == '64px':
+        if '64px' in SETTINGS:
             output = ResidualBlock('Dec1.Pix2Res', input_dim=2*DIM_0, output_dim=DIM_PIX_1, filter_size=3, mask_type=('b', N_CHANNELS), inputs_stdev=1, inputs=output)
             output = ResidualBlock('Dec1.Pix3Res', input_dim=DIM_PIX_1,   output_dim=DIM_PIX_1, filter_size=3, mask_type=('b', N_CHANNELS), inputs_stdev=1, inputs=output)
             output = ResidualBlock('Dec1.Pix4Res', input_dim=DIM_PIX_1,   output_dim=DIM_PIX_1, filter_size=3, mask_type=('b', N_CHANNELS), inputs_stdev=1, inputs=output)
