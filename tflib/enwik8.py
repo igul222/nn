@@ -1,3 +1,4 @@
+import time
 import numpy
 
 def make_generator(corpus, BATCH_SIZE, SHORT_SEQ_LEN, LONG_SEQ_LEN, OVERLAP):
@@ -17,7 +18,9 @@ def make_generator(corpus, BATCH_SIZE, SHORT_SEQ_LEN, LONG_SEQ_LEN, OVERLAP):
         if SHORT_SEQ_LEN == 1:
             print "Warning: SHORT_SEQ_LEN=1, not shuffling because otherwise this will take forever"
         else:
+            start_time = time.time()
             numpy.random.shuffle(long_seqs)
+            print "Shuffling took {}s".format(time.time() - start_time)
         batches = long_seqs.reshape((-1, BATCH_SIZE, LONG_SEQ_LEN))
 
         if OVERLAP != 0:

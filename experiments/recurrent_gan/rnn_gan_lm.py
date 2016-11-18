@@ -30,7 +30,7 @@ import functools
 
 BATCH_SIZE = 100
 ITERS = 10000
-SEQ_LEN = 1
+SEQ_LEN = 2
 
 train_data, dev_data, test_data, charmap, inv_charmap = lib.enwik8.load(BATCH_SIZE, SEQ_LEN, SEQ_LEN, 0)
 
