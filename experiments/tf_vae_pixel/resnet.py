@@ -533,6 +533,9 @@ def Enc2(h1):
     output = ResidualBlock('Enc2.Res2Pre', input_dim=DIM_4, output_dim=DIM_4, filter_size=3, resample=None,   inputs_stdev=np.sqrt(2), he_init=True, inputs=output)
     output = ResidualBlock('Enc2.Res2', input_dim=DIM_4, output_dim=DIM_4, filter_size=3, resample=None,   inputs_stdev=np.sqrt(2), he_init=True, inputs=output)
 
+    output = ResidualBlock('Enc2.Res2Post1', input_dim=DIM_4, output_dim=DIM_4, filter_size=3, resample=None,   inputs_stdev=np.sqrt(2), he_init=True, inputs=output)
+    output = ResidualBlock('Enc2.Res2Post2', input_dim=DIM_4, output_dim=DIM_4, filter_size=3, resample=None,   inputs_stdev=np.sqrt(2), he_init=True, inputs=output)
+
     output = tf.reshape(output, [-1, 4*4*DIM_4])
     output = lib.ops.linear.Linear('Enc2.Output', input_dim=4*4*DIM_4, output_dim=2*LATENT_DIM_2, inputs=output)
 
@@ -547,6 +550,9 @@ def Dec2(latents, targets):
     output = lib.ops.linear.Linear('Dec2.Input', input_dim=LATENT_DIM_2, output_dim=4*4*DIM_4, inputs=output)
 
     output = tf.reshape(output, [-1, DIM_4, 4, 4])
+
+    output = ResidualBlock('Dec2.Res1Pre1', input_dim=DIM_4, output_dim=DIM_4, filter_size=3, resample=None, inputs_stdev=np.sqrt(3), he_init=True, inputs=output)
+    output = ResidualBlock('Dec2.Res1Pre2', input_dim=DIM_4, output_dim=DIM_4, filter_size=3, resample=None, inputs_stdev=np.sqrt(3), he_init=True, inputs=output)
 
     output = ResidualBlock('Dec2.Res1', input_dim=DIM_4, output_dim=DIM_4, filter_size=3, resample=None, inputs_stdev=np.sqrt(3), he_init=True, inputs=output)
     output = ResidualBlock('Dec2.Res1Post', input_dim=DIM_4, output_dim=DIM_4, filter_size=3, resample=None, inputs_stdev=np.sqrt(3), he_init=True, inputs=output)
@@ -991,8 +997,6 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
             ('kl2', kl_cost_2),
         ]
 
-    # lr_multiplier = tf.placeholder(tf.float32, shape=None, name='lr_multiplier')
-
     decayed_lr = tf.train.exponential_decay(
         LR,
         total_iters,
@@ -1010,9 +1014,9 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
         prints=prints,
         optimizer=tf.train.AdamOptimizer(decayed_lr),
         train_data=train_data,
-        test_data=dev_data,
+        # test_data=dev_data,
         callback=generate_and_save_samples,
         callback_every=TIMES['callback_every'],
-        test_every=TIMES['test_every'],
+        # test_every=TIMES['test_every'],
         save_output=True
     )
