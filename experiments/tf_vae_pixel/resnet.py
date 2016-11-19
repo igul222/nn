@@ -418,6 +418,7 @@ def ResidualBlock(name, input_dim, output_dim, inputs, inputs_stdev, filter_size
         output = conv_1(name+'.Conv1', filter_size=filter_size, mask_type=mask_type, inputs=output, he_init=he_init)
         output = nonlinearity(output)
         output = conv_2(name+'.Conv2', filter_size=filter_size, mask_type=mask_type, inputs=output, he_init=he_init)
+        output = lib.ops.batchnorm.Batchnorm(name+'.BN', [0,2,3], output)
     else:
         output = nonlinearity(output)
         output_a = conv_1(name+'.Conv1A', filter_size=filter_size, mask_type=mask_type, inputs=output, he_init=he_init)
