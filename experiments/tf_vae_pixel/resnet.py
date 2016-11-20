@@ -415,9 +415,9 @@ def ResidualBlock(name, input_dim, output_dim, inputs, inputs_stdev, filter_size
     output = inputs
     if mask_type == None:
         output = nonlinearity(output)
-        output = conv_1(name+'.Conv1', filter_size=filter_size, mask_type=mask_type, inputs=output, he_init=he_init)
+        output = conv_1(name+'.Conv1', filter_size=filter_size, mask_type=mask_type, inputs=output, he_init=he_init, weightnorm=False)
         output = nonlinearity(output)
-        output = conv_2(name+'.Conv2', filter_size=filter_size, mask_type=mask_type, inputs=output, he_init=he_init)
+        output = conv_2(name+'.Conv2', filter_size=filter_size, mask_type=mask_type, inputs=output, he_init=he_init, weightnorm=False)
         output = lib.ops.batchnorm.Batchnorm(name+'.BN', [0,2,3], output)
     else:
         output = nonlinearity(output)
@@ -426,7 +426,7 @@ def ResidualBlock(name, input_dim, output_dim, inputs, inputs_stdev, filter_size
         output = pixcnn_gated_nonlinearity(output_a, output_b)
         output = conv_2(name+'.Conv2', filter_size=filter_size, mask_type=mask_type, inputs=output, he_init=he_init)
 
-    return shortcut + (0.3 * output)
+    return shortcut + output
 
 def Enc1(images):
     if PIXCNN_ONLY:
