@@ -31,7 +31,7 @@ def train_loop(
     inject_iteration=False,
     optimizer=tf.train.AdamOptimizer(),
     save_every=1000,
-    save_output=False
+    save_checkpoints=False
     ):
 
     prints = [('cost', cost)] + prints
@@ -100,7 +100,7 @@ def train_loop(
 
     train_generator = train_data()
 
-    saver = tf.train.Saver()
+    saver = tf.train.Saver(write_version=tf.train.SaverDef.V2)
 
     if os.path.isfile(TRAIN_LOOP_FILE):
         print "Resuming interrupted train loop session"
@@ -147,30 +147,28 @@ def train_loop(
         print print_str[:-1] # omit the last \t
 
     def save_train_output_and_params(iteration):
-        if not save_output:
-            return
+        print "Saving things..."
 
-        print "Saving output and params..."
+        if save_checkpoints:
+            # Saving weights takes a while. To minimize risk of interruption during
+            # a critical segment, we write weights to a temp file, delete the old
+            # file, and rename the temp file.
 
-        # Saving weights takes a while. To minimize risk of interruption during
-        # a critical segment, we write weights to a temp file, delete the old
-        # file, and rename the temp file.
+            start_time = time.time()
+            saver.save(session, PARAMS_FILE + '_tmp')
+            print "saver.save time: {}".format(time.time() - start_time)
+            start_time = time.time()
+            if os.path.isfile(PARAMS_FILE):
+                os.remove(PARAMS_FILE)
+            os.rename(PARAMS_FILE+'_tmp', PARAMS_FILE)
+            print "move and rename time: {}".format(time.time() - start_time)
 
-        start_time = time.time()
-        saver.save(session, PARAMS_FILE + '_tmp')
-        print "saver.save time: {}".format(time.time() - start_time)
-        start_time = time.time()
-        if os.path.isfile(PARAMS_FILE):
-            os.remove(PARAMS_FILE)
-        os.rename(PARAMS_FILE+'_tmp', PARAMS_FILE)
-        print "move and rename time: {}".format(time.time() - start_time)
+            # shutil.copyfile(PARAMS_FILE, PARAMS_FILE+'_'+str(iteration))
 
-        # shutil.copyfile(PARAMS_FILE, PARAMS_FILE+'_'+str(iteration))
-
-        start_time = time.time()
-        with open(TRAIN_LOOP_FILE, 'w') as f:
-            pickle.dump(_vars, f)
-        print "_vars pickle dump time: {}".format(time.time() - start_time)
+            start_time = time.time()
+            with open(TRAIN_LOOP_FILE, 'w') as f:
+                pickle.dump(_vars, f)
+            print "_vars pickle dump time: {}".format(time.time() - start_time)
 
         start_time = time.time()
         with open(TRAIN_OUTPUT_FILE, 'a') as f:
