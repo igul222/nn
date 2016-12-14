@@ -9,7 +9,7 @@ if 'ISHAAN_NN_LIB' in os.environ:
 else:
     sys.path.append(os.getcwd())
 
-N_GPUS = 1
+N_GPUS = 3
 
 try: # This only matters on Ishaan's computer
     import experiment_tools
@@ -40,8 +40,8 @@ from scipy.misc import imsave
 import time
 import functools
 
-DATASET = 'lsun_64' # mnist_256, lsun_32, lsun_64, imagenet_64
-SETTINGS = '64px_small' # mnist_256, 32px_small, 32px_big, 64px_small, 64px_big
+DATASET = 'imagenet_64' # mnist_256, lsun_32, lsun_64, imagenet_64
+SETTINGS = '64px_big' # mnist_256, 32px_small, 32px_big, 64px_small, 64px_big
 
 if SETTINGS == 'mnist_256':
     # two_level uses Enc1/Dec1 for the bottom level, Enc2/Dec2 for the top level
@@ -312,7 +312,7 @@ elif SETTINGS == '64px_big':
     DIM_PIX_2    = 512
 
     DIM_4        = 512
-    LATENT_DIM_2 = 512
+    LATENT_DIM_2 = 1024
 
     PIXCNN_ONLY = False
     # Uncomment for PixelCNN only (NO VAE)
@@ -336,22 +336,22 @@ elif SETTINGS == '64px_big':
     }
 
     VANILLA = False
-    LR = 3e-4
+    LR = 1e-3
 
-    LR_DECAY_AFTER = 250000
+    LR_DECAY_AFTER = 100000
     LR_DECAY_FACTOR = .5
 
-    ALPHA1_ITERS = 5000
-    ALPHA2_ITERS = 20000
+    ALPHA1_ITERS = 1000
+    ALPHA2_ITERS = 10000
     KL_PENALTY = 1.01
-    BETA_ITERS = 1000
+    BETA_ITERS = 500
 
     BATCH_SIZE = 63
     N_CHANNELS = 3
     HEIGHT = 64
     WIDTH = 64
-    LATENTS1_WIDTH = 8
-    LATENTS1_HEIGHT = 8
+    LATENTS1_WIDTH = 16
+    LATENTS1_HEIGHT = 16
 
 
 if DATASET == 'mnist_256':
@@ -404,6 +404,7 @@ def ResidualBlock(name, input_dim, output_dim, inputs, inputs_stdev, filter_size
         conv_shortcut = lib.ops.conv2d.Conv2D
         conv_1        = functools.partial(lib.ops.conv2d.Conv2D, input_dim=input_dim,  output_dim=output_dim)
         conv_2        = functools.partial(lib.ops.conv2d.Conv2D, input_dim=output_dim, output_dim=output_dim)
+
     else:
         raise Exception('invalid resample value')
 
@@ -450,6 +451,7 @@ def Enc1(images):
             output = lib.ops.conv2d.Conv2D('Enc1.Input', input_dim=N_CHANNELS, output_dim=DIM_1, filter_size=1, inputs=output, he_init=False)
 
     output = ResidualBlock('Enc1.Res1Pre', input_dim=DIM_1, output_dim=DIM_1, filter_size=3, resample=None, inputs_stdev=1,          inputs=output)
+    output = ResidualBlock('Enc1.Res1Pre2', input_dim=DIM_1, output_dim=DIM_1, filter_size=3, resample=None, inputs_stdev=1,          inputs=output)
     output = ResidualBlock('Enc1.Res1', input_dim=DIM_1, output_dim=DIM_2, filter_size=3, resample='down', inputs_stdev=1,          inputs=output)
     # output = ResidualBlock('Enc1.Res2Pre', input_dim=DIM_2, output_dim=DIM_2, filter_size=3, resample=None, inputs_stdev=1,          inputs=output)
     # output = ResidualBlock('Enc1.Res2', input_dim=DIM_2, output_dim=DIM_3, filter_size=3, resample='down', inputs_stdev=np.sqrt(2), inputs=output)
@@ -457,6 +459,7 @@ def Enc1(images):
     # output = ResidualBlock('Enc1.Res3', input_dim=DIM_3, output_dim=DIM_4, filter_size=3, resample='down',   inputs_stdev=np.sqrt(3), inputs=output)
     output = ResidualBlock('Enc1.Res4Pre', input_dim=DIM_2, output_dim=DIM_2, filter_size=3, resample=None,   inputs_stdev=np.sqrt(3), inputs=output)
     output = ResidualBlock('Enc1.Res4', input_dim=DIM_2, output_dim=DIM_2, filter_size=3, resample=None,   inputs_stdev=np.sqrt(3), inputs=output)
+    output = ResidualBlock('Enc1.Res4Post', input_dim=DIM_2, output_dim=DIM_2, filter_size=3, resample=None,   inputs_stdev=np.sqrt(3), inputs=output)
 
 
     mu_and_sigma = lib.ops.conv2d.Conv2D('Enc1.Out', input_dim=DIM_2, output_dim=2*LATENT_DIM_1, filter_size=1, inputs=output, he_init=False)
@@ -474,12 +477,14 @@ def Dec1(latents, images):
 
         output = ResidualBlock('Dec1.Res1A', input_dim=DIM_2, output_dim=DIM_2, filter_size=3, resample=None, inputs_stdev=1, inputs=output)
         output = ResidualBlock('Dec1.Res1B', input_dim=DIM_2, output_dim=DIM_2, filter_size=3, resample=None, inputs_stdev=1, inputs=output)
+        output = ResidualBlock('Dec1.Res1C', input_dim=DIM_2, output_dim=DIM_2, filter_size=3, resample=None, inputs_stdev=1, inputs=output)
         # output = ResidualBlock('Dec1.Res1', input_dim=DIM_4, output_dim=DIM_3, filter_size=3, resample='up', inputs_stdev=1, inputs=output)
         # output = ResidualBlock('Dec1.Res1Post', input_dim=DIM_3, output_dim=DIM_3, filter_size=3, resample=None, inputs_stdev=1, inputs=output)
         # output = ResidualBlock('Dec1.Res2', input_dim=DIM_3, output_dim=DIM_2, filter_size=3, resample='up', inputs_stdev=np.sqrt(2), inputs=output)
         # output = ResidualBlock('Dec1.Res2Post', input_dim=DIM_2, output_dim=DIM_2, filter_size=3, resample=None, inputs_stdev=np.sqrt(2), inputs=output)
         output = ResidualBlock('Dec1.Res3', input_dim=DIM_2, output_dim=DIM_1, filter_size=3, resample='up', inputs_stdev=np.sqrt(3), inputs=output)
         output = ResidualBlock('Dec1.Res3Post', input_dim=DIM_1, output_dim=DIM_1, filter_size=3, resample=None, inputs_stdev=np.sqrt(3), inputs=output)
+        output = ResidualBlock('Dec1.Res3Post2', input_dim=DIM_1, output_dim=DIM_1, filter_size=3, resample=None, inputs_stdev=np.sqrt(3), inputs=output)
 
         if '64px' in SETTINGS:
             output = ResidualBlock('Dec1.Res4', input_dim=DIM_1, output_dim=DIM_0, filter_size=3, resample='up', inputs_stdev=np.sqrt(3), inputs=output)
@@ -536,6 +541,7 @@ def Enc2(h1):
     output = ResidualBlock('Enc2.Res1Pre', input_dim=DIM_2, output_dim=DIM_2, filter_size=3, resample=None, inputs_stdev=1,          he_init=True, inputs=output)
     output = ResidualBlock('Enc2.Res1', input_dim=DIM_2, output_dim=DIM_3, filter_size=3, resample='down', inputs_stdev=1,          he_init=True, inputs=output)
     output = ResidualBlock('Enc2.Res2Pre', input_dim=DIM_3, output_dim=DIM_3, filter_size=3, resample=None,   inputs_stdev=np.sqrt(2), he_init=True, inputs=output)
+    output = ResidualBlock('Enc2.Res2Pre2', input_dim=DIM_3, output_dim=DIM_3, filter_size=3, resample=None,   inputs_stdev=np.sqrt(2), he_init=True, inputs=output)
     output = ResidualBlock('Enc2.Res1A', input_dim=DIM_3, output_dim=DIM_4, filter_size=3, resample='down', inputs_stdev=1,          he_init=True, inputs=output)
     output = ResidualBlock('Enc2.Res2PreA', input_dim=DIM_4, output_dim=DIM_4, filter_size=3, resample=None,   inputs_stdev=np.sqrt(2), he_init=True, inputs=output)
     output = ResidualBlock('Enc2.Res2', input_dim=DIM_4, output_dim=DIM_4, filter_size=3, resample=None,   inputs_stdev=np.sqrt(2), he_init=True, inputs=output)
@@ -559,9 +565,10 @@ def Dec2(latents, targets):
     output = ResidualBlock('Dec2.Res1Post', input_dim=DIM_4, output_dim=DIM_4, filter_size=3, resample=None, inputs_stdev=np.sqrt(3), he_init=True, inputs=output)
     output = ResidualBlock('Dec2.Res3', input_dim=DIM_4, output_dim=DIM_3, filter_size=3, resample='up', inputs_stdev=np.sqrt(3), he_init=True, inputs=output)
     output = ResidualBlock('Dec2.Res3Post', input_dim=DIM_3, output_dim=DIM_3, filter_size=3, resample=None, inputs_stdev=np.sqrt(3), he_init=True, inputs=output)
-    output = ResidualBlock('Dec2.Res3Post2', input_dim=DIM_3, output_dim=DIM_2, filter_size=3, resample='up', inputs_stdev=np.sqrt(3), he_init=True, inputs=output)
-    output = ResidualBlock('Dec2.Res3PostA', input_dim=DIM_2, output_dim=DIM_2, filter_size=3, resample=None, inputs_stdev=np.sqrt(3), he_init=True, inputs=output)
-    output = ResidualBlock('Dec2.Res3PostB', input_dim=DIM_2, output_dim=DIM_2, filter_size=3, resample=None, inputs_stdev=np.sqrt(3), he_init=True, inputs=output)
+    output = ResidualBlock('Dec2.Res3Post2', input_dim=DIM_3, output_dim=DIM_3, filter_size=3, resample=None, inputs_stdev=np.sqrt(3), he_init=True, inputs=output)
+    output = ResidualBlock('Dec2.Res3Post4', input_dim=DIM_3, output_dim=DIM_2, filter_size=3, resample='up', inputs_stdev=np.sqrt(3), he_init=True, inputs=output)
+    output = ResidualBlock('Dec2.Res3Post5', input_dim=DIM_2, output_dim=DIM_2, filter_size=3, resample=None, inputs_stdev=np.sqrt(3), he_init=True, inputs=output)
+    output = ResidualBlock('Dec2.Res3Post6', input_dim=DIM_2, output_dim=DIM_2, filter_size=3, resample=None, inputs_stdev=np.sqrt(3), he_init=True, inputs=output)
 
     if HIGHER_LEVEL_PIXCNN:
 
