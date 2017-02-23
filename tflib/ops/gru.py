@@ -4,6 +4,32 @@ import tflib.ops.linear
 import numpy as np
 import tensorflow as tf
 
+def GRUStep(name, n_in, n_hid, inputs, state):
+        gates = tf.nn.sigmoid(
+            lib.ops.linear.Linear(
+                name+'.Gates',
+                n_in + n_hid,
+                2 * n_hid,
+                tf.concat(1, [inputs, state])
+            )
+        )
+
+        update, reset = tf.split(1, 2, gates)
+        scaled_state = reset * state
+
+        candidate = tf.tanh(
+            lib.ops.linear.Linear(
+                name+'.Candidate', 
+                n_in + n_hid, 
+                n_hid, 
+                tf.concat(1, [inputs, scaled_state])
+            )
+        )
+
+        output = (update * candidate) + ((1 - update) * state)
+
+        return output
+
 class GRUCell(tf.nn.rnn_cell.RNNCell):
     def __init__(self, name, n_in, n_hid):
         self._n_in = n_in
@@ -19,29 +45,7 @@ class GRUCell(tf.nn.rnn_cell.RNNCell):
         return self._n_hid
 
     def __call__(self, inputs, state, scope=None):
-        gates = tf.nn.sigmoid(
-            lib.ops.linear.Linear(
-                self._name+'.Gates',
-                self._n_in + self._n_hid,
-                2 * self._n_hid,
-                tf.concat(1, [inputs, state])
-            )
-        )
-
-        update, reset = tf.split(1, 2, gates)
-        scaled_state = reset * state
-
-        candidate = tf.tanh(
-            lib.ops.linear.Linear(
-                self._name+'.Candidate', 
-                self._n_in + self._n_hid, 
-                self._n_hid, 
-                tf.concat(1, [inputs, scaled_state])
-            )
-        )
-
-        output = (update * candidate) + ((1 - update) * state)
-
+        output = GRUStep(self._name, self._n_in, self._n_hid, inputs, state)
         return output, output
 
 def GRU(name, n_in, n_hid, inputs):

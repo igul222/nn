@@ -1,7 +1,7 @@
 import json
 import numpy as np
 
-INTERVAL = 10000
+INTERVAL = 1000
 LABELS = ['train cost', 'train kl1', 'train kl2']
 
 for label in LABELS:

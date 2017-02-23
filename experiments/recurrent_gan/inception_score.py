@@ -9,11 +9,12 @@ if __name__ == '__main__':
         pass
 
 import tflib as lib
-import tflib.train_loop
+import tflib.train_loop_2
 import tflib.mnist
 import tflib.ops.mlp
 import tflib.ops.linear
 import tflib.ops.conv2d
+import tflib.ops.batchnorm
 
 import numpy as np
 import tensorflow as tf
@@ -22,13 +23,15 @@ import functools
 import os
 
 LR = 1e-3
-BATCH_SIZE = 50
+BATCH_SIZE = 500
+
+ITERS_PER_EPOCH = 50000/BATCH_SIZE
 
 TIMES = {
     'mode': 'iters',
-    'print_every': 1*1000,
-    'stop_after': 9*1000,
-    'test_every': 1*1000
+    'print_every': 1*ITERS_PER_EPOCH,
+    'stop_after': 9*ITERS_PER_EPOCH,
+    'test_every': 1*ITERS_PER_EPOCH
 }
 
 
@@ -46,7 +49,7 @@ def SubpixelConv2D(*args, **kwargs):
     output = tf.transpose(output, [0,3,1,2])
     return output
 
-def ResidualBlock(name, input_dim, output_dim, inputs, filter_size, mask_type=None, resample=None, he_init=True):
+def ResidualBlock(name, input_dim, output_dim, inputs, filter_size, is_training, mask_type=None, resample=None, he_init=True):
     """
     resample: None, 'down', or 'up'
     """
@@ -79,6 +82,7 @@ def ResidualBlock(name, input_dim, output_dim, inputs, filter_size, mask_type=No
         output = conv_1(name+'.Conv1', filter_size=filter_size, mask_type=mask_type, inputs=output, he_init=he_init)
         output = nonlinearity(output)
         output = conv_2(name+'.Conv2', filter_size=filter_size, mask_type=mask_type, inputs=output, he_init=he_init)
+        output = lib.ops.batchnorm.Batchnorm(name+'.BN', [0,2,3], output, is_training, update_moving_stats=True)
     else:
         output = nonlinearity(output)
         output_a = conv_1(name+'.Conv1A', filter_size=filter_size, mask_type=mask_type, inputs=output, he_init=he_init)
@@ -92,13 +96,14 @@ def build_model(graph):
     with graph.as_default():
         inputs = tf.placeholder(tf.float32, shape=[None, 784])
         targets = tf.placeholder(tf.int32, shape=[None])
+        is_training = tf.placeholder(tf.bool, shape=None)
 
         output = tf.reshape(inputs, [-1, 1, 28, 28])
         output = lib.ops.conv2d.Conv2D('InceptionScore.Conv1', 1, 32, 3, output, he_init=False)
-        output = ResidualBlock('InceptionScore.Res1', 32, 32, output, 3, resample='down')
-        output = ResidualBlock('InceptionScore.Res2', 32, 32, output, 3, resample=None)
-        output = ResidualBlock('InceptionScore.Res3', 32, 64, output, 3, resample='down')
-        output = ResidualBlock('InceptionScore.Res4', 64, 64, output, 3, resample=None)
+        output = ResidualBlock('InceptionScore.Res1', 32, 32, output, 3, is_training, resample='down')
+        output = ResidualBlock('InceptionScore.Res2', 32, 32, output, 3, is_training, resample=None)
+        output = ResidualBlock('InceptionScore.Res3', 32, 64, output, 3, is_training, resample='down')
+        output = ResidualBlock('InceptionScore.Res4', 64, 64, output, 3, is_training, resample=None)
         output = tf.reduce_mean(output, reduction_indices=[2,3])
         logits = lib.ops.linear.Linear('InceptionScore.Linear', 64, 10, output)
         # logits = lib.ops.mlp.MLP(
@@ -129,10 +134,10 @@ def build_model(graph):
         kl = softmax * (tf.log(softmax) - tf.log(tf.reduce_mean(softmax, reduction_indices=[0], keep_dims=True)))
         inception_score = tf.exp(tf.reduce_mean(tf.reduce_sum(kl, reduction_indices=[1])))
 
-    return (inputs, targets, cost, acc, logits, inception_score)
+    return (inputs, targets, is_training, cost, acc, logits, inception_score)
 
 def train_model(graph, session, model):
-    inputs, targets, cost, acc, logits, inception_score = model
+    inputs, targets, is_training, cost, acc, logits, inception_score = model
 
     lib.print_model_settings(locals().copy())
 
@@ -142,10 +147,11 @@ def train_model(graph, session, model):
     )
 
     with graph.as_default():
-        lib.train_loop.train_loop(
+        lib.train_loop_2.train_loop(
             session=session,
             inputs=[inputs, targets],
             cost=cost,
+            is_training_var=is_training,
             prints=[
                 ('acc', acc),
                 ('inception', inception_score)
@@ -153,11 +159,13 @@ def train_model(graph, session, model):
             optimizer=tf.train.AdamOptimizer(LR),
             train_data=train_data,
             test_data=dev_data,
-            times=TIMES
+            test_every=TIMES['test_every'],
+            stop_after=TIMES['stop_after'],
+            # times=TIMES
         )
 
 def run_model(graph, session, model, data):
-    inputs, targets, cost, acc, logits, inception_score = model
+    inputs, targets, is_training, cost, acc, logits, inception_score = model
     all_logits = []
     step = min(1000, len(data))
     for i in xrange(0, len(data), step):

@@ -29,6 +29,9 @@ def train_loop(
     callback=None,
     callback_every=None,
     inject_iteration=False,
+    bn_vars=None,
+    bn_stats_iters=1000,
+    before_test=None,
     optimizer=tf.train.AdamOptimizer(),
     save_every=1000,
     save_checkpoints=False
@@ -79,15 +82,32 @@ def train_loop(
     train_op = optimizer.apply_gradients(grads_and_vars)
 
     def train_fn(input_vals):
+        feed_dict = {sym:real for sym, real in zip(inputs, input_vals)}
+        if bn_vars is not None:
+            feed_dict[bn_vars[0]] = True
+            feed_dict[bn_vars[1]] = 0
         return session.run(
             [p[1] for p in prints] + [train_op],
-            feed_dict={sym:real for sym, real in zip(inputs, input_vals)}
+            feed_dict=feed_dict
         )[:-1]
 
-    def eval_fn(input_vals):
+    def bn_stats_fn(input_vals, iter_):
+        feed_dict = {sym:real for sym, real in zip(inputs, input_vals)}
+        feed_dict[bn_vars[0]] = True
+        feed_dict[bn_vars[1]] = iter_
         return session.run(
             [p[1] for p in prints],
-            feed_dict={sym:real for sym, real in zip(inputs, input_vals)}
+            feed_dict=feed_dict
+        )
+
+    def eval_fn(input_vals):
+        feed_dict = {sym:real for sym, real in zip(inputs, input_vals)}
+        if bn_vars is not None:
+            feed_dict[bn_vars[0]] = False
+            feed_dict[bn_vars[1]] = 0
+        return session.run(
+            [p[1] for p in prints],
+            feed_dict=feed_dict
         )
 
     _vars = {
@@ -150,20 +170,12 @@ def train_loop(
         print "Saving things..."
 
         if save_checkpoints:
-            # Saving weights takes a while. To minimize risk of interruption during
-            # a critical segment, we write weights to a temp file, delete the old
-            # file, and rename the temp file.
+            # Saving weights takes a while. There's a risk of interruption during
+            # this time, leaving the weights file corrupt. Oh well.
 
             start_time = time.time()
-            saver.save(session, PARAMS_FILE + '_tmp')
+            saver.save(session, PARAMS_FILE)
             print "saver.save time: {}".format(time.time() - start_time)
-            start_time = time.time()
-            if os.path.isfile(PARAMS_FILE):
-                os.remove(PARAMS_FILE)
-            os.rename(PARAMS_FILE+'_tmp', PARAMS_FILE)
-            print "move and rename time: {}".format(time.time() - start_time)
-
-            # shutil.copyfile(PARAMS_FILE, PARAMS_FILE+'_'+str(iteration))
 
             start_time = time.time()
             with open(TRAIN_LOOP_FILE, 'w') as f:
@@ -218,24 +230,51 @@ def train_loop(
 
         log(outputs, False, _vars, [('iter time', run_time), ('data time', data_load_time)])
 
-        if (test_data is not None) and _vars['iteration'] % test_every == (test_every-1):
+        if ((test_data is not None) and _vars['iteration'] % test_every == (test_every-1)) or ((callback is not None) and _vars['iteration'] % callback_every == (callback_every-1)):
             if inject_iteration:
-                test_outputs = [
-                    eval_fn([np.int32(_vars['iteration'])] + list(input_vals))
-                    for input_vals in test_data()
-                ]
+
+                if bn_vars is not None: # If using batchnorm, run over a bunch of training data first to make the running-average stats good.
+                    _train_gen = train_data()
+                    for i in xrange(bn_stats_iters):
+                        try:
+                            bn_stats_fn([np.int32(_vars['iteration'])] + list(_train_gen.next()), i)
+                        except StopIteration:
+                            _train_gen = train_data()
+                            bn_stats_fn([np.int32(_vars['iteration'])] + list(_train_gen.next()), i)
+
             else:
-                test_outputs = [
-                    eval_fn(input_vals) 
-                    for input_vals in test_data()
-                ]
-            mean_test_outputs = np.array(test_outputs).mean(axis=0)
 
-            log(mean_test_outputs, True, _vars, [])
+                if bn_vars is not None: # If using batchnorm, run over a bunch of training data first to make the running-average stats good.
+                    _train_gen = train_data()
+                    for i in xrange(bn_stats_iters):
+                        try:
+                            bn_stats_fn(list(_train_gen.next()), i)
+                        except StopIteration:
+                            _train_gen = train_data()
+                            bn_stats_fn(list(_train_gen.next()), i)
 
-        if (callback is not None) and _vars['iteration'] % callback_every == (callback_every-1):
-            tag = "iter{}".format(_vars['iteration'])
-            callback(tag)
+
+            if (test_data is not None) and _vars['iteration'] % test_every == (test_every-1):
+                if inject_iteration:
+
+                    test_outputs = [
+                        eval_fn([np.int32(_vars['iteration'])] + list(input_vals))
+                        for input_vals in test_data()
+                    ]
+
+                else:
+
+                    test_outputs = [
+                        eval_fn(list(input_vals))
+                        for input_vals in test_data()
+                    ]
+                mean_test_outputs = np.array(test_outputs).mean(axis=0)
+
+                log(mean_test_outputs, True, _vars, [])
+
+            if (callback is not None) and _vars['iteration'] % callback_every == (callback_every-1):
+                tag = "iter{}".format(_vars['iteration'])
+                callback(tag)
 
         if _vars['iteration'] % save_every == (save_every-1):
             save_train_output_and_params(_vars['iteration'])

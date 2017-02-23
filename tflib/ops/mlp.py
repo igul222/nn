@@ -12,7 +12,8 @@ def _ReLULayer(name, input_dim, output_dim, inputs):
         initialization='glorot_he'
     )
 
-    output = tf.nn.relu(output)
+    # output = tf.nn.relu(output)
+    # output = tf.tanh(output)
 
     return output
 
@@ -34,6 +35,8 @@ def MLP(name, input_dim, hidden_dim, output_dim, n_layers, inputs):
             output_dim=hidden_dim,
             inputs=output
         )
+
+    # output = tf.stop_gradient(output)
 
     return lib.ops.linear.Linear(
         name+'.Output', 

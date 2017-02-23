@@ -40,69 +40,8 @@ from scipy.misc import imsave
 import time
 import functools
 
-DATASET = 'imagenet_64' # mnist_256, lsun_32, lsun_64, imagenet_64
-SETTINGS = '64px_big' # mnist_256, 32px_small, 32px_big, 64px_small, 64px_big
+DATASET = 'svhn' # mnist_256, lsun_32, lsun_64, imagenet_64
 
-if SETTINGS == 'mnist_256':
-    # two_level uses Enc1/Dec1 for the bottom level, Enc2/Dec2 for the top level
-    # one_level uses EncFull/DecFull for the bottom (and only) level
-    MODE = 'one_level'
-
-    EMBED_INPUTS = True
-
-    # Turn on/off the bottom-level PixelCNN in Dec1/DecFull
-    PIXEL_LEVEL_PIXCNN = True
-    HIGHER_LEVEL_PIXCNN = True
-    PIXCNN_ONLY = False
-
-    # These settings are good for a 'smaller' model that trains (up to 200K iters)
-    # in ~1 day on a GTX 1080 (probably equivalent to 2 K40s).
-    DIM_PIX_1    = 32
-    DIM_1        = 16
-    DIM_2        = 32
-    DIM_3        = 32
-    # LATENT_DIM_1 = 32
-    # DIM_PIX_2    = 32
-
-    DIM_4        = 64
-    DIM_5        = 128
-    LATENT_DIM_2 = 2
-
-    ALPHA1_ITERS = 10000
-    # ALPHA2_ITERS = 5000
-    KL_PENALTY = 1.05
-    BETA_ITERS = 1000
-
-    # In Dec2, we break each spatial location into N blocks (analogous to channels
-    # in the original PixelCNN) and model each spatial location autoregressively
-    # as P(x)=P(x0)*P(x1|x0)*P(x2|x0,x1)... In my experiments values of N > 1
-    # actually hurt performance. Unsure why; might be a bug.
-    PIX_2_N_BLOCKS = 1
-
-    TIMES = {
-        'mode': 'iters',
-        'print_every': 2*500,
-        'test_every': 2*500,
-        'stop_after': 500*500,
-        'callback_every': 10*500
-    }
-
-    VANILLA = False
-    LR = 1e-3
-
-
-    LR_DECAY_AFTER = TIMES['stop_after']
-    LR_DECAY_FACTOR = 1.
-
-
-    BATCH_SIZE = 100
-    N_CHANNELS = 1
-    HEIGHT = 28
-    WIDTH = 28
-    LATENTS1_HEIGHT = 7
-    LATENTS1_WIDTH = 7
-
-elif SETTINGS == '32px_small':
     # two_level uses Enc1/Dec1 for the bottom level, Enc2/Dec2 for the top level
     # one_level uses EncFull/DecFull for the bottom (and only) level
     MODE = 'two_level'

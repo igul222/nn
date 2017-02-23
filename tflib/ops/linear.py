@@ -115,6 +115,10 @@ def Linear(
                 norms = tf.sqrt(tf.reduce_sum(tf.square(weight), reduction_indices=[0]))
                 weight = weight * (target_norms / norms)
 
+        # if 'Discriminator' in name:
+        #     print "WARNING weight constraint on {}".format(name)
+        #     weight = tf.nn.softsign(10.*weight)*.1
+
         if inputs.get_shape().ndims == 2:
             result = tf.matmul(inputs, weight)
         else:
