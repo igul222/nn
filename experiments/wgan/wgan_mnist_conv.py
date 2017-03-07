@@ -15,8 +15,10 @@ import tflib.ops.linear
 import tflib.ops.conv2d
 import tflib.ops.adamax
 import tflib.ops.batchnorm
+import tflib.ops.deconv2d
 import tflib.save_images
 import tflib.mnist
+import tflib.lsun_bedrooms
 
 import numpy as np
 import tensorflow as tf
@@ -29,46 +31,42 @@ import matplotlib.pyplot as plt
 import time
 import functools
 
-BATCH_SIZE = 100
+BATCH_SIZE = 128
 ITERS = 100000
-DIM = 32
-DIM_G = 32
+# DIM = 32
+# DIM_G = 32
+DATASET = 'lsun' # mnist, lsun
+MODE = 'dcgan' # dcgan, wgan, igan
 
-# lib.ops.conv2d.enable_default_weightnorm()
-# lib.ops.linear.enable_default_weightnorm()
+if DATASET == 'mnist':
+    OUTPUT_DIM = 28*28
+elif DATASET == 'lsun':
+    OUTPUT_DIM = 64*64*3
 
-def LeakyReLU(x, alpha=0.25):
+if MODE == 'dcgan':
+    lib.ops.conv2d.set_weights_stdev(0.02)
+    lib.ops.deconv2d.set_weights_stdev(0.02)
+    lib.ops.linear.set_weights_stdev(0.02)
+
+def LeakyReLU(x, alpha=0.2):
     return tf.maximum(alpha*x, x)
 
-def PReLU(name, x, dim):
-    alpha = lib.param(name+'.alpha', .25*np.ones(dim, dtype='float32'))
-    return tf.maximum(alpha*x, x)
-
-def ReLULayer(name, n_in, n_out, inputs, alpha=0.25):
+def ReLULayer(name, n_in, n_out, inputs):
     output = lib.ops.linear.Linear(name+'.Linear', n_in, n_out, inputs)
-    # return PReLU(name+'.prelu', output, n_out)
-    return LeakyReLU(output, alpha=alpha)
+    return tf.nn.relu(output)
 
-def GenLayer(name, n_in, n_out, inputs, alpha=0.25):
-    output = lib.ops.linear.Linear(name+'.Linear', n_in, 2*n_out, inputs)
-    output_1, output_2 = tf.split(1,2,output)
-    return tf.nn.sigmoid(output_1) * output_2
-
-def DiscLayer(name, n_in, n_out, inputs, alpha=0.25):
+def LeakyReLULayer(name, n_in, n_out, inputs):
     output = lib.ops.linear.Linear(name+'.Linear', n_in, n_out, inputs)
-    return tf.tanh(output)
+    return LeakyReLU(output)
 
-def FCGenerator(n_samples):
-    noise = tf.random_uniform(
-        shape=[n_samples, 128], 
-        minval=-np.sqrt(3),
-        maxval=np.sqrt(3)
-    )
+def FCGenerator(n_samples, noise=None):
+    if noise is None:
+        noise = tf.random_normal([n_samples, 128])
 
-    output = GenLayer('Generator.1', 128, 512, noise)
-    output = GenLayer('Generator.2', 512, 512, output)
-    output = GenLayer('Generator.3', 512, 512, output)
-    output = lib.ops.linear.Linear('Generator.Out', 512, 784, output)
+    output = ReLULayer('Generator.1', 128, 512, noise)
+    output = ReLULayer('Generator.2', 512, 512, output)
+    output = ReLULayer('Generator.3', 512, 512, output)
+    output = lib.ops.linear.Linear('Generator.Out', 512, OUTPUT_DIM, output)
 
     output = tf.nn.sigmoid(output)
 
@@ -76,299 +74,175 @@ def FCGenerator(n_samples):
 
 def FCDiscriminator(inputs):
 
-    output = DiscLayer('Discriminator.1', 784, 512, inputs)
-    output = DiscLayer('Discriminator.2', 512, 512, output)
-    output = DiscLayer('Discriminator.3', 512, 512, output)
-    output = lib.ops.linear.Linear('Discriminator.Out', 512, 1, output)
+    output = LeakyReLULayer('Discriminator.1', OUTPUT_DIM, 512, inputs)
+    output = LeakyReLULayer('Discriminator.2', 512, 512, output)
+    output = LeakyReLULayer('Discriminator.3', 512, 512, output)
+    output = lib.ops.linear.Linear('Discriminator.Out', OUTPUT_DIM, 1, output)
 
     return tf.reshape(output, [-1])
 
-def SubpixelConv2D(*args, **kwargs):
-    kwargs['output_dim'] = 4*kwargs['output_dim']
-    output = lib.ops.conv2d.Conv2D(*args, **kwargs)
-    output = tf.transpose(output, [0,2,3,1])
-    output = tf.depth_to_space(output, 2)
-    output = tf.transpose(output, [0,3,1,2])
-    return output
-
-
-def ResBlock(name, dim, inputs):
-    output = tf.nn.relu(inputs)
-    output = lib.ops.conv2d.Conv2D(name+'.1', dim, dim, 3, output, he_init=True)
-    output = tf.nn.relu(output)
-    output = lib.ops.conv2d.Conv2D(name+'.2', dim, dim, 3, output, he_init=True)
-    # output = lib.ops.batchnorm.Batchnorm(name+'.bn', [0,2,3], output, fused=False)
-    return (0.3*output) + inputs
-
-def ResBlockDownsample(name, dim, output_dim, inputs):
-    output = tf.nn.relu(inputs)
-    output = lib.ops.conv2d.Conv2D(name+'.1', dim, dim, 3, output, he_init=True)
-    output = tf.nn.relu(output)
-    output = lib.ops.conv2d.Conv2D(name+'.2', dim, output_dim, 3, output, stride=2, he_init=True)
-    # output = lib.ops.batchnorm.Batchnorm(name+'.bn', [0,2,3], output, fused=False)
-    return (0.3*output) + lib.ops.conv2d.Conv2D(name+'.skip', dim, output_dim, 1, inputs, stride=2, he_init=False)
-
-def ResBlockG(name, dim, inputs):
-    output = tf.nn.relu(inputs)
-    output = lib.ops.conv2d.Conv2D(name+'.1', dim, dim, 3, output)
-    output = tf.nn.relu(output)
-    output = lib.ops.conv2d.Conv2D(name+'.2', dim, dim, 3, output)
-    # output = lib.ops.batchnorm.Batchnorm(name+'.bn', [0,2,3], output)
-    return (0.3*output) + inputs
-
-def ResBlockUpsample(name, dim, output_dim, inputs):
-    output = tf.nn.relu(inputs)
-    output = SubpixelConv2D(name+'.1', input_dim=dim, output_dim=output_dim, filter_size=3, inputs=output)
-    output = tf.nn.relu(output)
-    output = lib.ops.conv2d.Conv2D(name+'.2', output_dim, output_dim, 3, output)
-    # output = lib.ops.batchnorm.Batchnorm(name+'.bn', [0,2,3], output)
-    return (0.3*output) + SubpixelConv2D(name+'.skip', input_dim=dim, output_dim=output_dim, filter_size=1, inputs=inputs, he_init=False)
-
-def ConvGenerator(n_samples, noise=None):
+def DCGANGenerator(n_samples, noise=None):
     if noise is None:
-        noise = tf.random_uniform(
-            shape=[n_samples, 128], 
-            minval=-np.sqrt(3),
-            maxval=np.sqrt(3)
-        )
+        noise = tf.random_normal([n_samples, 128])
 
-    output = lib.ops.linear.Linear('Generator.Input', 128, 4*4*(8*DIM_G), noise)
-    output = tf.reshape(output, [-1, 8*DIM_G, 4, 4])
+    output = lib.ops.linear.Linear('Generator.Input', 128, 4*4*1024, noise)
+    output = lib.ops.batchnorm.Batchnorm('Generator.BN1', [0], output)
+    output = tf.nn.relu(output)
+    output = tf.reshape(output, [-1, 1024, 4, 4])
 
-    output = ResBlockG('Generator.1Pre', 8*DIM_G, output)
-    output = ResBlockG('Generator.1', 8*DIM_G, output)
-    output = ResBlockUpsample('Generator.2', 8*DIM_G, 4*DIM_G, output)
-    output = output[:, :, :7, :7]
+    output = lib.ops.deconv2d.Deconv2D('Generator.2', 1024, 512, 5, output)
+    output = lib.ops.batchnorm.Batchnorm('Generator.BN2', [0,2,3], output)
+    output = tf.nn.relu(output)
 
-    output = ResBlockG('Generator.Extra1', 4*DIM_G, output)
-    output = ResBlockG('Generator.Extra2', 4*DIM_G, output)
-    output = ResBlockG('Generator.Extra3', 4*DIM_G, output)
-    output = ResBlockG('Generator.Extra4', 4*DIM_G, output)
-    output = ResBlockG('Generator.Extra5', 4*DIM_G, output)
+    output = lib.ops.deconv2d.Deconv2D('Generator.3', 512, 256, 5, output)
+    output = lib.ops.batchnorm.Batchnorm('Generator.BN3', [0,2,3], output)
+    output = tf.nn.relu(output)
 
+    output = lib.ops.deconv2d.Deconv2D('Generator.4', 256, 128, 5, output)
+    output = lib.ops.batchnorm.Batchnorm('Generator.BN4', [0,2,3], output)
+    output = tf.nn.relu(output)
 
-    output = ResBlockG('Generator.3', 4*DIM_G, output)
-    output = ResBlockG('Generator.4', 4*DIM_G, output)
-    output = ResBlockUpsample('Generator.5', 4*DIM_G, 2*DIM_G, output)
-    output = ResBlockG('Generator.6', 2*DIM_G, output)
-    output = ResBlockG('Generator.7', 2*DIM_G, output)
-    output = ResBlockUpsample('Generator.8', 2*DIM_G, DIM_G, output)
-    output = ResBlockG('Generator.9', DIM_G, output)
+    output = lib.ops.deconv2d.Deconv2D('Generator.5', 128, 3, 5, output)
+    output = tf.tanh(output)
 
-    output = lib.ops.conv2d.Conv2D('Generator.Output', DIM_G, 1, 1, output, he_init=False)
-    output = tf.nn.sigmoid(output / 5.)
+    return tf.reshape(output, [-1, OUTPUT_DIM])
 
-    output = tf.reshape(output, [-1, 784])
-    return output
+def DCGANDiscriminator(inputs):
+    output = tf.reshape(inputs, [-1, 3, 64, 64])
 
-def ConvDiscriminator(inputs):
-    output = tf.reshape(inputs, [-1, 1, 28, 28])
-    output = lib.ops.conv2d.Conv2D('Discriminator.Input', 1, DIM, 1, output)
+    output = lib.ops.conv2d.Conv2D('Discriminator.1', 3, 128, 5, output, stride=2)
+    output = LeakyReLU(output)
 
-    output = ResBlock('Discriminator.1', DIM, output)
-    output = ResBlockDownsample('Discriminator.2', DIM, 2*DIM, output)
-    output = ResBlock('Discriminator.3', 2*DIM, output)
-    output = ResBlock('Discriminator.4', 2*DIM, output)
-    output = ResBlockDownsample('Discriminator.5', 2*DIM, 4*DIM, output)
-    output = ResBlock('Discriminator.6', 4*DIM, output)
-    output = ResBlock('Discriminator.7', 4*DIM, output)
+    output = lib.ops.conv2d.Conv2D('Discriminator.2', 128, 256, 5, output, stride=2)
+    output = lib.ops.batchnorm.Batchnorm('Discriminator.BN2', [0,2,3], output)
+    output = LeakyReLU(output)
 
-    output = ResBlock('Discriminator.Extra1', 4*DIM, output)
-    output = ResBlock('Discriminator.Extra2', 4*DIM, output)
-    output = ResBlock('Discriminator.Extra3', 4*DIM, output)
-    output = ResBlock('Discriminator.Extra4', 4*DIM, output)
-    output = ResBlock('Discriminator.Extra5', 4*DIM, output)
+    output = lib.ops.conv2d.Conv2D('Discriminator.3', 256, 512, 5, output, stride=2)
+    output = lib.ops.batchnorm.Batchnorm('Discriminator.BN3', [0,2,3], output)
+    output = LeakyReLU(output)
 
-    output = ResBlockDownsample('Discriminator.8', 4*DIM, 8*DIM, output)
-    output = ResBlock('Discriminator.9', 8*DIM, output)
-    output = ResBlock('Discriminator.9Post', 8*DIM, output)
+    output = lib.ops.conv2d.Conv2D('Discriminator.4', 512, 1024, 5, output, stride=2)
+    output = lib.ops.batchnorm.Batchnorm('Discriminator.BN4', [0,2,3], output)
+    output = LeakyReLU(output)
 
-    output = tf.reshape(output, [-1, 4*4*(8*DIM)])
-    output = lib.ops.linear.Linear('Discriminator.Out', 4*4*(8*DIM), 1, output)
+    output = tf.reshape(output, [-1, 4*4*1024])
+    output = lib.ops.linear.Linear('Discriminator.Output', 4*4*1024, 1, output)
+    # output = tf.nn.sigmoid(output)
 
     return tf.reshape(output, [-1])
 
-def ConvDiscriminator2(inputs):
-    output = tf.reshape(inputs, [-1, 1, 28, 28])
-    output = lib.ops.conv2d.Conv2D('Discriminator2.Input', 1, DIM, 1, output)
+Generator = DCGANGenerator
+Discriminator = DCGANDiscriminator
 
-    output = ResBlock('Discriminator2.1', DIM, output)
-    output = ResBlockDownsample('Discriminator2.2', DIM, 2*DIM, output)
-    output = ResBlock('Discriminator2.3', 2*DIM, output)
-    output = ResBlock('Discriminator2.4', 2*DIM, output)
-    output = ResBlockDownsample('Discriminator2.5', 2*DIM, 4*DIM, output)
-    output = ResBlock('Discriminator2.6', 4*DIM, output)
-    output = ResBlock('Discriminator2.7', 4*DIM, output)
-    output = ResBlockDownsample('Discriminator2.8', 4*DIM, 8*DIM, output)
-    output = ResBlock('Discriminator2.9', 8*DIM, output)
-    output = ResBlock('Discriminator2.9Post', 8*DIM, output)
-
-    output = tf.reshape(output, [-1, 4*4*(8*DIM)])
-    output = lib.ops.linear.Linear('Discriminator2.Out', 4*4*(8*DIM), 1, output)
-
-    return tf.reshape(output, [-1])
-
-def ConvDiscriminator3(inputs):
-    output = tf.reshape(inputs, [-1, 1, 28, 28])
-    output = lib.ops.conv2d.Conv2D('Discriminator3.Input', 1, DIM, 1, output)
-
-    output = ResBlock('Discriminator3.1', DIM, output)
-    output = ResBlockDownsample('Discriminator3.2', DIM, 2*DIM, output)
-    output = ResBlock('Discriminator3.3', 2*DIM, output)
-    output = ResBlock('Discriminator3.4', 2*DIM, output)
-    output = ResBlockDownsample('Discriminator3.5', 2*DIM, 4*DIM, output)
-    output = ResBlock('Discriminator3.6', 4*DIM, output)
-    output = ResBlock('Discriminator3.7', 4*DIM, output)
-    output = ResBlockDownsample('Discriminator3.8', 4*DIM, 8*DIM, output)
-    output = ResBlock('Discriminator3.9', 8*DIM, output)
-    output = ResBlock('Discriminator3.9Post', 8*DIM, output)
-
-    output = tf.reshape(output, [-1, 4*4*(8*DIM)])
-    output = lib.ops.linear.Linear('Discriminator3.Out', 4*4*(8*DIM), 1, output)
-
-    return tf.reshape(output, [-1])
-
-
-Generator = ConvGenerator
-
-Discriminator = ConvDiscriminator
-Discriminator2 = ConvDiscriminator2
-Discriminator3 = ConvDiscriminator3
-
-real_data = tf.placeholder(tf.float32, shape=[None, 784])
+real_data_conv = tf.placeholder(tf.int32, shape=[BATCH_SIZE, 3, 64, 64])
+real_data = tf.reshape(2*((tf.cast(real_data_conv, tf.float32)/255.)-.5), [BATCH_SIZE, OUTPUT_DIM])
 fake_data = Generator(BATCH_SIZE)
 
-disc_out = Discriminator(tf.concat(0, [real_data, fake_data]))
-disc_real = disc_out[:BATCH_SIZE]
-disc_fake = disc_out[BATCH_SIZE:2*BATCH_SIZE]
-# disc_interpolates_1 = disc_out[2*BATCH_SIZE:3*BATCH_SIZE]
-# disc_interpolates_2 = disc_out[3*BATCH_SIZE:]
+disc_real = Discriminator(real_data)
+disc_fake = Discriminator(fake_data)
 
-# disc_real = Discriminator(real_data)
-# disc_fake = Discriminator(fake_data)
+if MODE == 'wgan':
+    gen_cost = -tf.reduce_mean(disc_fake)
+    disc_cost = tf.reduce_mean(disc_fake) - tf.reduce_mean(disc_real)
 
-disc_2_real = Discriminator2(real_data)
-disc_2_fake = Discriminator2(fake_data)
+    gen_train_op = tf.train.RMSPropOptimizer(learning_rate=5e-5).minimize(gen_cost, var_list=lib.params_with_name('Generator'))
+    disc_train_op = tf.train.RMSPropOptimizer(learning_rate=5e-5).minimize(disc_cost, var_list=lib.params_with_name('Discriminator.'))
 
-disc_3_real = Discriminator3(real_data)
-disc_3_fake = Discriminator3(fake_data)
+    clip_ops = []
+    for var in lib.params_with_name('Discriminator'):
+        if '.b' not in var.name:
+            print "Clipping {}".format(var.name)
+            clip_bounds = [-.01, .01]
+            clip_ops.append(tf.assign(var, tf.clip_by_value(var, clip_bounds[0], clip_bounds[1])))
+    clip_disc_weights = tf.group(*clip_ops)
 
-# WGAN generator loss
-gen_cost = -tf.reduce_mean(disc_fake)
+elif MODE == 'igan':
+    gen_cost = -tf.reduce_mean(disc_fake)
+    disc_cost = tf.reduce_mean(disc_fake) - tf.reduce_mean(disc_real)
 
-# WGAN discriminator loss
-disc_cost = tf.reduce_mean(disc_fake) - tf.reduce_mean(disc_real)
-disc_2_cost = tf.reduce_mean(disc_2_fake) - tf.reduce_mean(disc_2_real)
-disc_3_cost = tf.reduce_mean(disc_3_fake) - tf.reduce_mean(disc_3_real)
+    alpha = tf.random_uniform(
+        shape=[1,1], 
+        minval=0.,
+        maxval=1.
+    )
+    differences = fake_data - real_data
+    interpolates = real_data + (alpha*differences)
+    gradients = tf.gradients(Discriminator(interpolates), [interpolates])[0]
+    slopes = tf.sqrt(tf.reduce_sum(tf.square(gradients), reduction_indices=[0,1]))
+    lipschitz_penalty = tf.reduce_mean(tf.maximum(0.,slopes-10.)**2)
+    wgan_disc_cost = disc_cost
+    disc_cost += 10*lipschitz_penalty
+    lipschitz_penalty = tf.reduce_mean(slopes)
 
-# WGAN lipschitz-penalty
-alpha = tf.random_uniform(
-    shape=[BATCH_SIZE,1], 
-    minval=0.,
-    maxval=1.
-)
-differences = fake_data - real_data
-interpolates = real_data + (alpha*differences)
-gradients = tf.gradients(Discriminator(interpolates), [interpolates])[0]
-slopes = tf.sqrt(tf.reduce_sum(tf.square(gradients), reduction_indices=[1]))
-lipschitz_penalty = tf.reduce_mean((slopes-1.)**2)
-wgan_disc_cost = disc_cost
-disc_cost += 10*lipschitz_penalty
-lipschitz_penalty = tf.reduce_mean(slopes)
-
-gradients_2 = tf.gradients(Discriminator2(interpolates), [interpolates])[0]
-slopes_2 = tf.sqrt(tf.reduce_sum(tf.square(gradients_2), reduction_indices=[1]))
-lipschitz_penalty_2 = tf.reduce_mean((slopes_2-1.)**2)
-wgan_disc_2_cost = disc_2_cost
-disc_2_cost += 10*lipschitz_penalty_2
-lipschitz_penalty_2 = tf.reduce_mean(slopes_2)
-
-gradients_3 = tf.gradients(Discriminator3(interpolates), [interpolates])[0]
-slopes_3 = tf.sqrt(tf.reduce_sum(tf.square(gradients_3), reduction_indices=[1]))
-lipschitz_penalty_3 = tf.reduce_mean((slopes_3-1.)**2)
-wgan_disc_3_cost = disc_3_cost
-disc_3_cost += 10*lipschitz_penalty_3
-lipschitz_penalty_3 = tf.reduce_mean(slopes_3)
-
-
-if len(lib.params_with_name('Generator')):
     gen_train_op = tf.train.AdamOptimizer(learning_rate=2e-4, beta1=0.5, beta2=0.9).minimize(gen_cost, var_list=lib.params_with_name('Generator'))
-else:
-    gen_train_op = None
-disc_train_op = tf.train.AdamOptimizer(learning_rate=2e-4, beta1=0.5, beta2=0.9).minimize(disc_cost, var_list=lib.params_with_name('Discriminator.'))
-# disc_2_train_op = tf.train.AdamOptimizer(learning_rate=5e-4, beta1=0.5, beta2=0.9).minimize(disc_2_cost, var_list=lib.params_with_name('Discriminator2.'))
-# disc_3_train_op = tf.train.RMSPropOptimizer(learning_rate=1e-4).minimize(disc_3_cost, var_list=lib.params_with_name('Discriminator3.'))
-# disc_3_train_op = lib.ops.adamax.AdamaxOptimizer(learning_rate=5e-4, beta1=0.5, beta2=0.9).minimize(disc_3_cost, var_list=lib.params_with_name('Discriminator3.'))
+    disc_train_op = tf.train.AdamOptimizer(learning_rate=2e-4, beta1=0.5, beta2=0.9).minimize(disc_cost, var_list=lib.params_with_name('Discriminator.'))
 
-# optimizer = tf.train.RMSPropOptimizer(learning_rate=5e-4)
-# gvs = optimizer.compute_gradients(disc_cost)
-# gs = [g for g,v in gvs]
-# vs = [v for g,v in gvs]
-# clipped_gs, _ = tf.clip_by_global_norm(gs, 10.)
-# capped_gvs = zip(clipped_gs, vs)
-# # capped_gvs = [(tf.clip_by_norm(grad, 10.), var) for grad, var in gvs]
-# disc_train_op = optimizer.apply_gradients(capped_gvs)
+elif MODE == 'dcgan':
+    gen_cost = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_fake, tf.ones_like(disc_fake)))
+    disc_cost =  tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_fake, tf.zeros_like(disc_fake)))
+    disc_cost += tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_real, tf.ones_like(disc_real)))
+    disc_cost /= 2.
 
+    gen_train_op = tf.train.AdamOptimizer(learning_rate=2e-4, beta1=0.5).minimize(gen_cost, var_list=lib.params_with_name('Generator'))
+    disc_train_op = tf.train.AdamOptimizer(learning_rate=2e-4, beta1=0.5).minimize(disc_cost, var_list=lib.params_with_name('Discriminator.'))
 
 frame_i = [0]
-fixed_noise = tf.constant(np.random.uniform(low=-np.sqrt(3), high=np.sqrt(3), size=(100, 128)).astype('float32'))
-fixed_noise_samples = Generator(100, noise=fixed_noise)
+fixed_noise = tf.constant(np.random.normal(size=(128, 128)).astype('float32'))
+fixed_noise_samples = Generator(128, noise=fixed_noise)
 def generate_image(frame, true_dist):
     samples = session.run(fixed_noise_samples)
-    lib.save_images.save_images(samples, 'samples_{}.jpg'.format(frame))
+    samples = ((samples+1.)*(255./2)).astype('int32')
+    lib.save_images.save_images(samples.reshape((128, 3, 64, 64)), 'samples_{}.jpg'.format(frame))
 
-train_gen, _, _ = lib.mnist.load(BATCH_SIZE, BATCH_SIZE)
-def inf_train_gen():
-    while True:
-        for images,targets in train_gen():
-            yield images
+
+if DATASET == 'mnist':
+    train_gen, _, _ = lib.mnist.load(BATCH_SIZE, BATCH_SIZE)
+    def inf_train_gen():
+        while True:
+            for images,targets in train_gen():
+                yield images
+
+elif DATASET == 'lsun':
+    train_gen, _ = lib.lsun_bedrooms.load(BATCH_SIZE, downsample=False)
+    def inf_train_gen():
+        while True:
+            for (images,) in train_gen():
+                yield images
 
 with tf.Session() as session:
 
     session.run(tf.initialize_all_variables())
 
-    def generate_samples(iteration):
-        samples = session.run(fake_images)
-        lib.save_images.save_images(samples.reshape((-1,28,28)), 'samples_{}.jpg'.format(iteration))
-
     gen = inf_train_gen()
-    disc_costs, wgan_disc_costs, lipschitz_penalties, disc_2_costs, wgan_disc_2_costs, lipschitz_penalties_2, disc_3_costs, wgan_disc_3_costs, lipschitz_penalties_3, gen_costs = [], [], [], [], [], [], [], [], [], []
+    disc_costs, gen_costs = [], []
 
     start_time = time.time()
 
     for iteration in xrange(ITERS):
-        _data = gen.next()
 
         if iteration % 2 == 0:
-            if iteration < 20:
-                disc_iters = 50
+            if MODE == 'dcgan':
+                disc_iters = 1
             else:
-                disc_iters = 5
+                if iteration < 20:
+                    disc_iters = 50
+                else:
+                    disc_iters = 5
             for i in xrange(disc_iters):
-                _disc_cost, _wgan_disc_cost, _lipschitz_penalty, _ = session.run([disc_cost, wgan_disc_cost, lipschitz_penalty, disc_train_op], feed_dict={real_data: _data})
-                # if i < 2:
-                #     _disc_2_cost, _ = session.run([disc_2_cost, disc_2_train_op], feed_dict={real_data: _data})
-                #     _disc_3_cost, _ = session.run([disc_3_cost, disc_3_train_op], feed_dict={real_data: _data})
-                # _disc_cost, _wgan_disc_cost, _lipschitz_penalty, _disc_2_cost, _wgan_disc_2_cost, _lipschitz_penalty_2, _disc_3_cost, _wgan_disc_3_cost, _lipschitz_penalty_3, _, _, _ = session.run([disc_cost, wgan_disc_cost, lipschitz_penalty, disc_2_cost, wgan_disc_2_cost, lipschitz_penalty_2, disc_3_cost, wgan_disc_3_cost, lipschitz_penalty_3, disc_train_op, disc_2_train_op, disc_3_train_op], feed_dict={real_data: _data})
                 _data = gen.next()
+                _disc_cost, _ = session.run([disc_cost, disc_train_op], feed_dict={real_data_conv: _data})
+
             disc_costs.append(_disc_cost)
-            wgan_disc_costs.append(_wgan_disc_cost)
-            lipschitz_penalties.append(_lipschitz_penalty)
-            # disc_2_costs.append(_disc_2_cost)
-            # wgan_disc_2_costs.append(_wgan_disc_2_cost)
-            # lipschitz_penalties_2.append(_lipschitz_penalty_2)
-            # disc_3_costs.append(_disc_3_cost)
-            # wgan_disc_3_costs.append(_wgan_disc_3_cost)
-            # lipschitz_penalties_3.append(_lipschitz_penalty_3)
+            print _disc_cost
 
         else:
-            if gen_train_op is not None:
-                _gen_cost, _ = session.run([gen_cost, gen_train_op], feed_dict={real_data: _data})
-                gen_costs.append(_gen_cost)
+            _data = gen.next()
+            _gen_cost, _ = session.run([gen_cost, gen_train_op], feed_dict={real_data_conv: _data})
+            gen_costs.append(_gen_cost)
 
-        # if ((iteration < 10) and (iteration % 2 == 0)) or (iteration % 100 == 0):
         if ((iteration < 20) and (iteration % 2 == 1)) or (iteration % 20 == 19):
-            print "iter:\t{}\tdisc:\t{:.3f}\t{:.3f}\t{:.3f}\tgen:\t{:.3f}\ttime:\t{:.3f}".format(iteration, np.mean(disc_costs), 0., 0., np.mean(gen_costs), time.time() - start_time)
-            disc_costs, wgan_disc_costs, lipschitz_penalties, disc_2_costs, wgan_disc_2_costs, lipschitz_penalties_2, disc_3_costs, wgan_disc_3_costs, lipschitz_penalties_3, gen_costs = [], [], [], [], [], [], [], [], [], []
+            print "iter:\t{}\tdisc:\t{:.3f}\tgen:\t{:.3f}\ttime:\t{:.3f}".format(iteration, np.mean(disc_costs), np.mean(gen_costs), time.time() - start_time)
+            disc_costs, gen_costs = [], []
             start_time = time.time()
+        if iteration % 100 == 0:
             generate_image(iteration, _data)

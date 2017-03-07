@@ -48,10 +48,11 @@ class GRUCell(tf.nn.rnn_cell.RNNCell):
         output = GRUStep(self._name, self._n_in, self._n_hid, inputs, state)
         return output, output
 
-def GRU(name, n_in, n_hid, inputs):
-    h0 = lib.param(name+'.h0', np.zeros(n_hid, dtype='float32'))
-    batch_size = tf.shape(inputs)[0]
-    h0 = tf.reshape(tf.tile(h0, tf.pack([batch_size])), tf.pack([batch_size, n_hid]))
+def GRU(name, n_in, n_hid, inputs, h0=None):
+    if h0 is None:
+        batch_size = tf.shape(inputs)[0]
+        h0 = lib.param(name+'.h0', np.zeros(n_hid, dtype='float32'))
+        h0 = tf.reshape(tf.tile(h0, tf.pack([batch_size])), tf.pack([batch_size, n_hid]))
     return tf.nn.dynamic_rnn(GRUCell(name, n_in, n_hid), inputs, initial_state=h0, swap_memory=True)[0]
 
 # class GRUCell(tf.nn.rnn_cell.RNNCell):

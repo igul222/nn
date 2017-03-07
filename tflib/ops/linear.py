@@ -12,6 +12,15 @@ def disable_default_weightnorm():
     global _default_weightnorm
     _default_weightnorm = False
 
+_weights_stdev = None
+def set_weights_stdev(weights_stdev):
+    global _weights_stdev
+    _weights_stdev = weights_stdev
+
+def unset_weights_stdev():
+    global _weights_stdev
+    _weights_stdev = None
+
 def Linear(
         name, 
         input_dim, 
@@ -28,21 +37,22 @@ def Linear(
     with tf.name_scope(name) as scope:
 
         def uniform(stdev, size):
+            if _weights_stdev is not None:
+                stdev = _weights_stdev
             return np.random.uniform(
                 low=-stdev * np.sqrt(3),
                 high=stdev * np.sqrt(3),
                 size=size
             ).astype('float32')
 
-        if initialization == 'lecun' or \
-            (initialization == None):# and input_dim != output_dim):
+        if initialization == 'lecun':# and input_dim != output_dim):
             # disabling orth. init for now because it's too slow
             weight_values = uniform(
                 np.sqrt(1./input_dim),
                 (input_dim, output_dim)
             )
 
-        elif initialization == 'glorot':
+        elif initialization == 'glorot' or (initialization == None):
 
             weight_values = uniform(
                 np.sqrt(2./(input_dim+output_dim)),

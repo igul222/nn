@@ -9,6 +9,15 @@ def enable_default_weightnorm():
     global _default_weightnorm
     _default_weightnorm = True
 
+_weights_stdev = None
+def set_weights_stdev(weights_stdev):
+    global _weights_stdev
+    _weights_stdev = weights_stdev
+
+def unset_weights_stdev():
+    global _weights_stdev
+    _weights_stdev = None
+
 def Deconv2D(
     name, 
     input_dim, 
@@ -46,10 +55,18 @@ def Deconv2D(
         else: # Normalized init (Glorot & Bengio)
             filters_stdev = np.sqrt(2./(fan_in+fan_out))
 
-        filter_values = uniform(
-            filters_stdev,
-            (filter_size, filter_size, output_dim, input_dim)
-        )
+
+        if _weights_stdev is not None:
+            filter_values = uniform(
+                _weights_stdev,
+                (filter_size, filter_size, output_dim, input_dim)
+            )
+        else:
+            filter_values = uniform(
+                filters_stdev,
+                (filter_size, filter_size, output_dim, input_dim)
+            )
+
         filter_values *= gain
 
         filters = lib.param(

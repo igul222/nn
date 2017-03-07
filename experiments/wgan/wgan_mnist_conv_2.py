@@ -15,6 +15,7 @@ import tflib.ops.linear
 import tflib.ops.conv2d
 import tflib.save_images
 import tflib.mnist
+import tflib.ops.batchnorm
 
 import numpy as np
 import tensorflow as tf
@@ -30,7 +31,9 @@ import functools
 BATCH_SIZE = 100
 ITERS = 100000
 DIM = 16
-DIM_G = 64
+DIM_G = 16
+CLIP = False
+GRAD_LOSS = not CLIP
 
 def LeakyReLU(x, alpha=0.25):
     return tf.maximum(alpha*x, x)
@@ -92,13 +95,7 @@ def ResBlock(name, dim, inputs):
     output = lib.ops.conv2d.Conv2D(name+'.1', dim, dim, 3, output)
     output = tf.nn.relu(output)
     output = lib.ops.conv2d.Conv2D(name+'.2', dim, dim, 3, output)
-    return output + inputs
-
-def ResBlockG(name, dim, inputs):
-    output = tf.nn.relu(inputs)
-    output = lib.ops.conv2d.Conv2D(name+'.1', dim, dim, 3, output)
-    output = tf.nn.relu(output)
-    output = lib.ops.conv2d.Conv2D(name+'.2', dim, dim, 3, output)
+    # output = lib.ops.batchnorm.Batchnorm(name+'.bn', [0,2,3], output)
     return output + inputs
 
 def ResBlockDownsample(name, dim, output_dim, inputs):
@@ -106,7 +103,15 @@ def ResBlockDownsample(name, dim, output_dim, inputs):
     output = lib.ops.conv2d.Conv2D(name+'.1', dim, dim, 3, output)
     output = tf.nn.relu(output)
     output = lib.ops.conv2d.Conv2D(name+'.2', dim, output_dim, 3, output, stride=2)
+    # output = lib.ops.batchnorm.Batchnorm(name+'.bn', [0,2,3], output)
     return output + lib.ops.conv2d.Conv2D(name+'.skip', dim, output_dim, 1, inputs, stride=2)
+
+def ResBlockG(name, dim, inputs):
+    output = tf.nn.relu(inputs)
+    output = lib.ops.conv2d.Conv2D(name+'.1', dim, dim, 3, output)
+    output = tf.nn.relu(output)
+    output = lib.ops.conv2d.Conv2D(name+'.2', dim, dim, 3, output)
+    return output + inputs
 
 def ResBlockUpsample(name, dim, output_dim, inputs):
     output = tf.nn.relu(inputs)
@@ -196,33 +201,37 @@ disc_2_cost = tf.reduce_mean(disc_2_fake) - tf.reduce_mean(disc_2_real)
 disc_3_cost = tf.reduce_mean(disc_3_fake) - tf.reduce_mean(disc_3_real)
 
 # WGAN lipschitz-penalty
-alpha = tf.random_uniform(
-    shape=[BATCH_SIZE,1], 
-    minval=0.,
-    maxval=1.
-)
-differences = fake_data - real_data
-interpolates = real_data + (alpha*differences)
-gradients = tf.gradients(Discriminator(interpolates), [interpolates])[0]
-slopes = tf.sqrt(tf.reduce_sum(tf.square(gradients), reduction_indices=[1]))
-lipschitz_penalty = tf.reduce_mean((slopes-1.)**2)
-wgan_disc_cost = disc_cost
-disc_cost += 10*lipschitz_penalty
-lipschitz_penalty = tf.reduce_mean(slopes)
+if GRAD_LOSS:
+    alpha = tf.random_uniform(
+        shape=[BATCH_SIZE,1], 
+        minval=0.,
+        maxval=1.
+    )
+    differences = fake_data - real_data
+    interpolates = real_data + (alpha*differences)
+    gradients = tf.gradients(Discriminator(interpolates), [interpolates])[0]
+    slopes = tf.sqrt(tf.reduce_sum(tf.square(gradients), reduction_indices=[1]))
+    lipschitz_penalty = tf.reduce_mean((slopes-1.)**2)
+    wgan_disc_cost = disc_cost
+    disc_cost += 10*lipschitz_penalty
+    lipschitz_penalty = tf.reduce_mean(slopes)
 
-gradients_2 = tf.gradients(Discriminator2(interpolates), [interpolates])[0]
-slopes_2 = tf.sqrt(tf.reduce_sum(tf.square(gradients_2), reduction_indices=[1]))
-lipschitz_penalty_2 = tf.reduce_mean((slopes_2-1.)**2)
-wgan_disc_2_cost = disc_2_cost
-disc_2_cost += 10*lipschitz_penalty_2
-lipschitz_penalty_2 = tf.reduce_mean(slopes_2)
+    gradients_2 = tf.gradients(Discriminator2(interpolates), [interpolates])[0]
+    slopes_2 = tf.sqrt(tf.reduce_sum(tf.square(gradients_2), reduction_indices=[1]))
+    lipschitz_penalty_2 = tf.reduce_mean((slopes_2-1.)**2)
+    wgan_disc_2_cost = disc_2_cost
+    disc_2_cost += 10*lipschitz_penalty_2
+    lipschitz_penalty_2 = tf.reduce_mean(slopes_2)
 
-gradients_3 = tf.gradients(Discriminator3(interpolates), [interpolates])[0]
-slopes_3 = tf.sqrt(tf.reduce_sum(tf.square(gradients_3), reduction_indices=[1]))
-lipschitz_penalty_3 = tf.reduce_mean((slopes_3-1.)**2)
-wgan_disc_3_cost = disc_3_cost
-disc_3_cost += 10*lipschitz_penalty_3
-lipschitz_penalty_3 = tf.reduce_mean(slopes_3)
+    gradients_3 = tf.gradients(Discriminator3(interpolates), [interpolates])[0]
+    slopes_3 = tf.sqrt(tf.reduce_sum(tf.square(gradients_3), reduction_indices=[1]))
+    lipschitz_penalty_3 = tf.reduce_mean((slopes_3-1.)**2)
+    wgan_disc_3_cost = disc_3_cost
+    disc_3_cost += 10*lipschitz_penalty_3
+    lipschitz_penalty_3 = tf.reduce_mean(slopes_3)
+else:
+    wgan_disc_cost = disc_cost
+    lipschitz_penalty = tf.constant(0.)
 
 
 if len(lib.params_with_name('Generator')):
@@ -235,6 +244,17 @@ disc_train_op = tf.train.RMSPropOptimizer(learning_rate=1e-4).minimize(disc_cost
 # disc_3_train_op = tf.train.RMSPropOptimizer(learning_rate=1e-4).minimize(disc_3_cost, var_list=lib.params_with_name('Discriminator3.'))
 
 # disc_train_op = tf.train.AdamOptimizer(learning_rate=5e-4, beta1=0.5).minimize(disc_cost, var_list=lib.params_with_name('Discriminator'))
+
+if CLIP:
+    clip_ops = []
+    for var in lib.params_with_name('Discriminator'):
+        # if '.b' not in var.name:
+        if True:
+            print "Clipping {}".format(var.name)
+            clip_bounds = [-.01, .01]
+            clip_ops.append(tf.assign(var, tf.clip_by_value(var, clip_bounds[0], clip_bounds[1])))
+    clip_disc_weights = tf.group(*clip_ops)
+
 
 # optimizer = tf.train.RMSPropOptimizer(learning_rate=5e-4)
 # gvs = optimizer.compute_gradients(disc_cost)
@@ -281,6 +301,8 @@ with tf.Session() as session:
             for i in xrange(disc_iters):
                 _disc_cost, _wgan_disc_cost, _lipschitz_penalty, _ = session.run([disc_cost, wgan_disc_cost, lipschitz_penalty, disc_train_op], feed_dict={real_data: _data})
                 # _disc_cost, _wgan_disc_cost, _lipschitz_penalty, _disc_2_cost, _wgan_disc_2_cost, _lipschitz_penalty_2, _disc_3_cost, _wgan_disc_3_cost, _lipschitz_penalty_3, _, _, _ = session.run([disc_cost, wgan_disc_cost, lipschitz_penalty, disc_2_cost, wgan_disc_2_cost, lipschitz_penalty_2, disc_3_cost, wgan_disc_3_cost, lipschitz_penalty_3, disc_train_op, disc_2_train_op, disc_3_train_op], feed_dict={real_data: _data})
+                if CLIP:
+                    _ = session.run([clip_disc_weights])
                 _data = gen.next()
             disc_costs.append(_disc_cost)
             wgan_disc_costs.append(_wgan_disc_cost)

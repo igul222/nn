@@ -76,8 +76,12 @@ def Batchnorm(name, axes, inputs, is_training=None, stats_iter=None, update_movi
         # raise Exception('old BN')
         # TODO we can probably use nn.fused_batch_norm here too for speedup
         mean, var = tf.nn.moments(inputs, axes, keep_dims=True)
-        offset = lib.param(name+'.offset', np.zeros(mean.get_shape(), dtype='float32'))
-        scale = lib.param(name+'.scale', np.ones(var.get_shape(), dtype='float32'))
+        shape = mean.get_shape().as_list()
+        if 0 not in axes:
+            print "WARNING ({}): didn't find 0 in axes, but not using separate BN params for each item in batch".format(name)
+            shape[0] = 1
+        offset = lib.param(name+'.offset', np.zeros(shape, dtype='float32'))
+        scale = lib.param(name+'.scale', np.ones(shape, dtype='float32'))
         result = tf.nn.batch_normalization(inputs, mean, var, offset, scale, 1e-4)
         # lib.debug.print_stats(name, result)
         return result

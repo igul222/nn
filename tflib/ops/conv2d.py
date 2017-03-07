@@ -9,6 +9,15 @@ def enable_default_weightnorm():
     global _default_weightnorm
     _default_weightnorm = True
 
+_weights_stdev = None
+def set_weights_stdev(weights_stdev):
+    global _weights_stdev
+    _weights_stdev = weights_stdev
+
+def unset_weights_stdev():
+    global _weights_stdev
+    _weights_stdev = None
+
 def Conv2D(name, input_dim, output_dim, filter_size, inputs, he_init=True, mask_type=None, stride=1, weightnorm=None, biases=True, gain=1.):
     """
     inputs: tensor of shape (batch size, num channels, height, width)
@@ -63,10 +72,17 @@ def Conv2D(name, input_dim, output_dim, filter_size, inputs, he_init=True, mask_
         else: # Normalized init (Glorot & Bengio)
             filters_stdev = np.sqrt(2./(fan_in+fan_out))
 
-        filter_values = uniform(
-            filters_stdev,
-            (filter_size, filter_size, input_dim, output_dim)
-        )
+        if _weights_stdev is not None:
+            filter_values = uniform(
+                _weights_stdev,
+                (filter_size, filter_size, input_dim, output_dim)
+            )
+        else:
+            filter_values = uniform(
+                filters_stdev,
+                (filter_size, filter_size, input_dim, output_dim)
+            )
+
         # print "WARNING IGNORING GAIN"
         filter_values *= gain
 
