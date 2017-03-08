@@ -3,9 +3,11 @@
 import os, sys
 sys.path.append(os.getcwd())
 
+N_GPUS = 2
+
 try: # This only matters on Ishaan's computer
     import experiment_tools
-    experiment_tools.wait_for_gpu(tf=True)
+    experiment_tools.wait_for_gpu(tf=True, n_gpus=N_GPUS, skip=[1])
 except ImportError:
     pass
 
@@ -32,8 +34,9 @@ import matplotlib.pyplot as plt
 
 import time
 import functools
+import collections
 
-BATCH_SIZE = 128
+BATCH_SIZE = 64
 ITERS = 50000
 MODE = 'dcgan' # dcgan, wgan, wgan++, lsgan
 DATASET = 'imagenet' # imagenet, lsun
@@ -42,10 +45,9 @@ def GeneratorAndDiscriminator():
     return functools.partial(DCGANGenerator, dim=64, bn=True), functools.partial(DCGANDiscriminator, dim=64, bn=True)
     # return WGANPaper_CrippledDCGANGenerator, DCGANDiscriminator
 
-# DIM = 32
-# DIM_G = 32
-
 OUTPUT_DIM = 64*64*3
+
+DEVICES = ['/gpu:{}'.format(i) for i in xrange(N_GPUS)]
 
 # ! Layers
 
@@ -190,120 +192,146 @@ def DCGANDiscriminator(inputs, dim=128, bn=True):
 
 Generator, Discriminator = GeneratorAndDiscriminator()
 
-real_data_conv = tf.placeholder(tf.int32, shape=[BATCH_SIZE, 3, 64, 64])
-real_data = tf.reshape(2*((tf.cast(real_data_conv, tf.float32)/255.)-.5), [BATCH_SIZE, OUTPUT_DIM])
-fake_data = Generator(BATCH_SIZE)
+with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
 
-disc_real = Discriminator(real_data)
-disc_fake = Discriminator(fake_data)
+    all_real_data_conv = tf.placeholder(tf.int32, shape=[BATCH_SIZE, 3, 64, 64])
+    split_real_data_conv = tf.split(0, len(DEVICES), all_real_data_conv)
+    gen_costs, disc_costs = [],[]
 
-if MODE == 'wgan':
-    gen_cost = -tf.reduce_mean(disc_fake)
-    disc_cost = tf.reduce_mean(disc_fake) - tf.reduce_mean(disc_real)
+    for device_index, (device, real_data_conv) in enumerate(zip(DEVICES, split_real_data_conv)):
+        with tf.device(device):
 
-    gen_train_op = tf.train.RMSPropOptimizer(learning_rate=5e-5).minimize(gen_cost, var_list=lib.params_with_name('Generator'))
-    disc_train_op = tf.train.RMSPropOptimizer(learning_rate=5e-5).minimize(disc_cost, var_list=lib.params_with_name('Discriminator.'))
+            real_data = tf.reshape(2*((tf.cast(real_data_conv, tf.float32)/255.)-.5), [BATCH_SIZE/len(DEVICES), OUTPUT_DIM])
+            fake_data = Generator(BATCH_SIZE/len(DEVICES))
 
-    clip_ops = []
-    for var in lib.params_with_name('Discriminator'):
-        if ('.Filters' in var.name) or ('.W' in var.name):
+            # TODO fix
+            disc_real = Discriminator(real_data)
+            disc_fake = Discriminator(fake_data)
+
+            if MODE == 'wgan':
+                gen_cost = -tf.reduce_mean(disc_fake)
+                disc_cost = tf.reduce_mean(disc_fake) - tf.reduce_mean(disc_real)
+                mean_grad_norm = tf.constant(0.) # to make the logging code work
+
+            elif MODE == 'wgan++':
+                gen_cost = -tf.reduce_mean(disc_fake)
+                disc_cost = tf.reduce_mean(disc_fake) - tf.reduce_mean(disc_real)
+
+                alpha = tf.random_uniform(
+                    shape=[1,1], 
+                    minval=0.,
+                    maxval=1.
+                )
+                differences = fake_data - real_data
+                interpolates = real_data + (alpha*differences)
+                gradients = tf.gradients(Discriminator(interpolates), [interpolates])[0]
+                slopes = tf.sqrt(tf.reduce_sum(tf.square(gradients), reduction_indices=[0,1]))
+                lipschitz_penalty = tf.reduce_mean((slopes-1.)**2)
+                wgan_disc_cost = disc_cost
+                disc_cost += 10*lipschitz_penalty
+
+            elif MODE == 'dcgan':
+                gen_cost = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_fake, tf.ones_like(disc_fake)))
+                disc_cost =  tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_fake, tf.zeros_like(disc_fake)))
+                disc_cost += tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_real, tf.ones_like(disc_real)))
+                disc_cost /= 2.
+                mean_grad_norm = tf.constant(0.) # to make the logging code work
+
+            elif MODE == 'lsgan':
+                gen_cost = tf.reduce_mean((disc_fake - 1)**2)
+                disc_cost = (tf.reduce_mean((disc_real - 1)**2) + tf.reduce_mean((disc_fake - 0)**2))/2.
+                mean_grad_norm = tf.constant(0.) # to make the logging code work
+
+
+            gen_costs.append(gen_cost)
+            disc_costs.append(disc_cost)
+
+    gen_cost = tf.add_n(gen_costs) / len(DEVICES)
+    disc_cost = tf.add_n(disc_costs) / len(DEVICES)
+
+    if MODE == 'wgan':
+        gen_train_op = tf.train.RMSPropOptimizer(learning_rate=5e-5).minimize(gen_cost, var_list=lib.params_with_name('Generator'), colocate_gradients_with_ops=True)
+        disc_train_op = tf.train.RMSPropOptimizer(learning_rate=5e-5).minimize(disc_cost, var_list=lib.params_with_name('Discriminator.'), colocate_gradients_with_ops=True)
+
+        clip_ops = []
+        for var in lib.params_with_name('Discriminator'):
             print "Clipping {}".format(var.name)
             clip_bounds = [-.01, .01]
             clip_ops.append(tf.assign(var, tf.clip_by_value(var, clip_bounds[0], clip_bounds[1])))
-    clip_disc_weights = tf.group(*clip_ops)
+        clip_disc_weights = tf.group(*clip_ops)
 
-elif MODE == 'wgan++':
-    gen_cost = -tf.reduce_mean(disc_fake)
-    disc_cost = tf.reduce_mean(disc_fake) - tf.reduce_mean(disc_real)
+    elif MODE == 'wgan++':
+        gen_train_op = tf.train.AdamOptimizer(learning_rate=1e-4, beta1=0.5, beta2=0.9).minimize(gen_cost, var_list=lib.params_with_name('Generator'), colocate_gradients_with_ops=True)
+        disc_train_op = tf.train.AdamOptimizer(learning_rate=1e-4, beta1=0.5, beta2=0.9).minimize(disc_cost, var_list=lib.params_with_name('Discriminator.'), colocate_gradients_with_ops=True)
 
-    alpha = tf.random_uniform(
-        shape=[1,1], 
-        minval=0.,
-        maxval=1.
-    )
-    differences = fake_data - real_data
-    interpolates = real_data + (alpha*differences)
-    gradients = tf.gradients(Discriminator(interpolates), [interpolates])[0]
-    slopes = tf.sqrt(tf.reduce_sum(tf.square(gradients), reduction_indices=[0,1]))
-    lipschitz_penalty = tf.reduce_mean((slopes-1.)**2)
-    wgan_disc_cost = disc_cost
-    disc_cost += 10*lipschitz_penalty
-    lipschitz_penalty = tf.reduce_mean(slopes)
+    elif MODE == 'dcgan':
+        gen_train_op = tf.train.AdamOptimizer(learning_rate=2e-4, beta1=0.5).minimize(gen_cost, var_list=lib.params_with_name('Generator'), colocate_gradients_with_ops=True)
+        disc_train_op = tf.train.AdamOptimizer(learning_rate=2e-4, beta1=0.5).minimize(disc_cost, var_list=lib.params_with_name('Discriminator.'), colocate_gradients_with_ops=True)
 
-    gen_train_op = tf.train.AdamOptimizer(learning_rate=1e-4, beta1=0.5, beta2=0.9).minimize(gen_cost, var_list=lib.params_with_name('Generator'))
-    disc_train_op = tf.train.AdamOptimizer(learning_rate=1e-4, beta1=0.5, beta2=0.9).minimize(disc_cost, var_list=lib.params_with_name('Discriminator.'))
-
-elif MODE == 'dcgan':
-    gen_cost = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_fake, tf.ones_like(disc_fake)))
-    disc_cost =  tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_fake, tf.zeros_like(disc_fake)))
-    disc_cost += tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_real, tf.ones_like(disc_real)))
-    disc_cost /= 2.
-
-    gen_train_op = tf.train.AdamOptimizer(learning_rate=2e-4, beta1=0.5).minimize(gen_cost, var_list=lib.params_with_name('Generator'))
-    disc_train_op = tf.train.AdamOptimizer(learning_rate=2e-4, beta1=0.5).minimize(disc_cost, var_list=lib.params_with_name('Discriminator.'))
-
-elif MODE == 'lsgan':
-    gen_cost = tf.reduce_mean((disc_fake - 1)**2)
-    disc_cost = (tf.reduce_mean((disc_real - 1)**2) + tf.reduce_mean((disc_fake - 0)**2))/2.
-
-    gen_train_op = tf.train.AdamOptimizer(learning_rate=2e-4, beta1=0.5).minimize(gen_cost, var_list=lib.params_with_name('Generator'))
-    disc_train_op = tf.train.AdamOptimizer(learning_rate=2e-4, beta1=0.5).minimize(disc_cost, var_list=lib.params_with_name('Discriminator.'))
-
-frame_i = [0]
-fixed_noise = tf.constant(np.random.normal(size=(128, 128)).astype('float32'))
-fixed_noise_samples = Generator(128, noise=fixed_noise)
-def generate_image(frame, true_dist):
-    samples = session.run(fixed_noise_samples)
-    samples = ((samples+1.)*(255./2)).astype('int32')
-    lib.save_images.save_images(samples.reshape((128, 3, 64, 64)), 'samples_{}.jpg'.format(frame))
+    elif MODE == 'lsgan':
+        gen_train_op = tf.train.AdamOptimizer(learning_rate=2e-4, beta1=0.5).minimize(gen_cost, var_list=lib.params_with_name('Generator'), colocate_gradients_with_ops=True)
+        disc_train_op = tf.train.AdamOptimizer(learning_rate=2e-4, beta1=0.5).minimize(disc_cost, var_list=lib.params_with_name('Discriminator.'), colocate_gradients_with_ops=True)
 
 
-if DATASET == 'lsun':
-    train_gen, _ = lib.lsun_bedrooms.load(BATCH_SIZE, downsample=False)
-elif DATASET == 'imagenet':
-    train_gen, _ = lib.small_imagenet.load(BATCH_SIZE)
+    frame_i = [0]
+    fixed_noise = tf.constant(np.random.normal(size=(BATCH_SIZE, 128)).astype('float32'))
+    all_fixed_noise_samples = []
+    for device_index, device in enumerate(DEVICES):
+        n_samples = BATCH_SIZE / len(DEVICES)
+        all_fixed_noise_samples.append(Generator(n_samples, noise=fixed_noise[device_index*n_samples:(device_index+1)*n_samples]))
+    all_fixed_noise_samples = tf.concat(0, all_fixed_noise_samples)
+    def generate_image(frame, true_dist):
+        samples = session.run(all_fixed_noise_samples)
+        samples = ((samples+1.)*(255.99/2)).astype('int32')
+        lib.save_images.save_images(samples.reshape((BATCH_SIZE, 3, 64, 64)), 'samples_{}.jpg'.format(frame))
 
-def inf_train_gen():
-    while True:
-        for (images,) in train_gen():
-            yield images
 
-with tf.Session() as session:
+    if DATASET == 'lsun':
+        train_gen, _ = lib.lsun_bedrooms.load(BATCH_SIZE, downsample=False)
+    elif DATASET == 'imagenet':
+        train_gen, _ = lib.small_imagenet.load(BATCH_SIZE)
+
+    def inf_train_gen():
+        while True:
+            for (images,) in train_gen():
+                yield images
+
 
     session.run(tf.initialize_all_variables())
 
     gen = inf_train_gen()
-    disc_costs, gen_costs = [], []
+    _disc_costs, _gen_costs, times = [], [], []
 
-    start_time = time.time()
 
     for iteration in xrange(ITERS):
 
-        if iteration % 2 == 0:
-            if (MODE == 'dcgan') or (MODE == 'lsgan'):
-                disc_iters = 1
-            else:
-                if iteration < 20:
-                    disc_iters = 20
-                else:
-                    disc_iters = 5
-            for i in xrange(disc_iters):
-                _data = gen.next()
-                _disc_cost, _ = session.run([disc_cost, disc_train_op], feed_dict={real_data_conv: _data})
-                if MODE == 'wgan':
-                    _ = session.run([clip_disc_weights])
 
-            disc_costs.append(_disc_cost)
+        start_time = time.time()
 
+        if (MODE == 'dcgan') or (MODE == 'lsgan'):
+            disc_iters = 1
         else:
+            if iteration < 20:
+                disc_iters = 20
+            else:
+                disc_iters = 5
+        for i in xrange(disc_iters):
             _data = gen.next()
-            _gen_cost, _ = session.run([gen_cost, gen_train_op], feed_dict={real_data_conv: _data})
-            gen_costs.append(_gen_cost)
+            _disc_cost, _ = session.run([disc_cost, disc_train_op], feed_dict={all_real_data_conv: _data})
+            if MODE == 'wgan':
+                _ = session.run([clip_disc_weights])
 
+        _disc_costs.append(_disc_cost)
 
-        if ((iteration < 20) and (iteration % 2 == 1)) or (iteration % 20 == 19):
-            print "iter:\t{}\tdisc:\t{:.3f}\tgen:\t{:.3f}\ttime:\t{:.3f}".format(iteration, np.mean(disc_costs), np.mean(gen_costs), time.time() - start_time)
-            disc_costs, gen_costs = [], []
-            start_time = time.time()
+        _data = gen.next()
+        _gen_cost, _ = session.run([gen_cost, gen_train_op], feed_dict={all_real_data_conv: _data})
+        _gen_costs.append(_gen_cost)
+
+        times.append(time.time() - start_time)
+
+        if (iteration < 20) or (iteration % 20 == 19):
+            print "iter:\t{}\tdisc:\t{:.3f}\tgen:\t{:.3f}\ttime:\t{:.3f}".format(iteration, np.mean(_disc_costs), np.mean(_gen_costs), np.mean(times))
+            _disc_costs, _gen_costs, times = [], [], []
+
         if iteration % 100 == 0:
             generate_image(iteration, _data)
