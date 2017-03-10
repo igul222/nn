@@ -96,7 +96,7 @@ for (name, val), grad in zip(debugprints, tf.gradients(disc_cost, [v for n,v in 
 # WGAN gradient loss term (this is my thing)
 alpha = tf.random_uniform(
     shape=[BATCH_SIZE,1], 
-    minval=1.,
+    minval=0.,
     maxval=1.
 )
 differences = fake_data - real_data

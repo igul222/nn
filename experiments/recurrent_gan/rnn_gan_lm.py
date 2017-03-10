@@ -55,7 +55,7 @@ SETTINGS = {
     'generator_output_mode': 'softmax',
     'ngram_discrim': None,
     'dim': 512,
-    'dim_g': 256,
+    'dim_g': 512,
     'noise': 'normal',
     'input_noise_std': 0.,
     'ngram_input_noise_std': 0.0,

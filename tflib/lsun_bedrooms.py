@@ -9,6 +9,7 @@ from fuel.streams import DataStream
 # from fuel.transformers.image import RandomFixedSizeCrop
 
 PATH = '/home/ishaan/data/lsun_bedrooms_2727000_64px.hdf5'
+# PATH = '/media/ramdisk/lsun_bedrooms_2727000_64px.hdf5'
 
 from scipy.misc import imsave
 def color_grid_vis(X, nh, nw, save_path):
@@ -63,7 +64,7 @@ def load(batch_size=128, downsample=True):
 
     # print "ntrain {}, nval {}".format(ntrain, nval)
 
-    tr_scheme = ShuffledScheme(examples=ntrain, batch_size=batch_size)
+    tr_scheme = SequentialScheme(examples=ntrain, batch_size=batch_size)
     tr_stream = DataStream(tr_data, iteration_scheme=tr_scheme)
 
     # te_scheme = SequentialScheme(examples=ntest, batch_size=batch_size)
