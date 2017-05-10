@@ -105,7 +105,7 @@ def Deconv2D(
 
         if biases:
             _biases = lib.param(
-                name+'.Biases',
+                name+'.b',
                 np.zeros(output_dim, dtype='float32')
             )
             result = tf.nn.bias_add(result, _biases)

@@ -82,11 +82,11 @@ def Conv2D(name, input_dim, output_dim, filter_size, inputs, he_init=True, mask_
 
         filters = filters * mask
 
-    if biases:
-        _biases = lib.param(
-            name+'.Biases',
-            np.zeros(output_dim, dtype=theano.config.floatX)
-        )
+    # if biases:
+    #     _biases = lib.param(
+    #         name+'.Biases',
+    #         np.zeros(output_dim, dtype=theano.config.floatX)
+    #     )
 
     result = T.nnet.conv2d(
         inputs, 

@@ -201,7 +201,7 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
             differences = fake_data - real_data
             interpolates = real_data + (alpha*differences)
             gradients = tf.gradients(Discriminator(interpolates), [interpolates])[0]
-            slopes = tf.sqrt(tf.reduce_sum(tf.square(gradients), reduction_indices=[0,1]))
+            slopes = tf.sqrt(tf.reduce_sum(tf.square(gradients), reduction_indices=[1]))
             lipschitz_penalty = tf.reduce_mean((slopes-1.)**2)
             wgan_disc_cost = disc_cost
             disc_cost += 10*lipschitz_penalty

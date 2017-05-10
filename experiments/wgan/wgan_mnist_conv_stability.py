@@ -1,5 +1,21 @@
 """Generative Adversarial Network for MNIST."""
 
+# Goal: push training as fast as possible while maintaining stability
+# Attempt 1: baseline. batch size 200 to reduce SGD noise. curve looks very very stable.
+# noBeta2: set adam's beta2 to default value. seems to work just as well, maybe a little better? (curve drops a little faster)
+# highLR: increase LR to 5e-4. learning happens way faster, still reasonably stable.
+# relu: replace leakyrelu with relu in D. 
+# bn: batchnorm everywhere: looks substantially less stable, actually...
+# bnG: generator only batchnorm. looks incredibly stable.
+# bnD: discrim only batchnorm. looks incredibly unstable.
+# cIters10: no bn anywhere, 10x critic iters. not profoundly more stable, maybe a little more?
+# cIters1: 1x critic iters. pretty unstable... but it converges to decent digits, surprisingly?
+# cIters1_lambda1: doesn't seem to help, really.
+# cIters1_5xLR: critic iters 1, gen LR 1/5th of disc LR
+# cIters1_tanh: critic iters 1x, tanh everywhere. annoyingly, seems to work [though the loss curve is kind of bad]
+# cIters1_tanh_noGradPenalty: no grad penalty. loss is now totally meaningless, but the motherfucker still kind of works?
+
+
 import os, sys
 sys.path.append(os.getcwd())
 
@@ -15,6 +31,7 @@ import tflib.ops.linear
 import tflib.ops.conv2d
 import tflib.ops.adamax
 import tflib.ops.batchnorm
+import tflib.ops.layernorm
 import tflib.ops.deconv2d
 import tflib.save_images
 import tflib.mnist
@@ -32,15 +49,23 @@ import matplotlib.pyplot as plt
 import time
 import functools
 
-BATCH_SIZE = 50
-ITERS = 200000
+BATCH_SIZE = 200
+ITERS = 10000
 # DIM = 32
 # DIM_G = 32
-MODE = 'wgan' # dcgan, wgan, wgan-gp
+MODE = 'wgan-gp' # dcgan, wgan, wgan-gp
 KEEP_PROB = 1.
 
 DIM = 64
 OUTPUT_DIM = 28*28
+
+def Batchnorm(name, axes, inputs):
+    if ('Discriminator' in name) and (MODE == 'wgan-gp'):
+        if axes != [0,2,3]:
+            raise Exception()
+        return lib.ops.layernorm.Layernorm(name,[1,2,3],inputs)
+    else:
+        return lib.ops.batchnorm.Batchnorm(name,axes,inputs,fused=True)
 
 def LeakyReLU(x, alpha=0.2):
     return tf.maximum(alpha*x, x)
@@ -80,22 +105,25 @@ def DCGANGenerator(n_samples, noise=None):
         noise = tf.random_normal([n_samples, 128])
 
     output = lib.ops.linear.Linear('Generator.Input', 128, 4*4*4*DIM, noise)
-    if MODE == 'wgan':
-        output = lib.ops.batchnorm.Batchnorm('Generator.BN1', [0], output)
+    # if MODE == 'wgan':
+    # output = Batchnorm('Generator.BN1', [0], output)
     output = tf.nn.relu(output)
+    # output = tf.tanh(output)
     output = tf.reshape(output, [-1, 4*DIM, 4, 4])
 
     output = lib.ops.deconv2d.Deconv2D('Generator.2', 4*DIM, 2*DIM, 5, output)
-    if MODE == 'wgan':
-        output = lib.ops.batchnorm.Batchnorm('Generator.BN2', [0,2,3], output)
+    # if MODE == 'wgan':
+    # output = Batchnorm('Generator.BN2', [0,2,3], output)
     output = tf.nn.relu(output)
+    # output = tf.tanh(output)
 
     output = output[:,:,:7,:7]
 
     output = lib.ops.deconv2d.Deconv2D('Generator.3', 2*DIM, DIM, 5, output)
-    if MODE == 'wgan':
-        output = lib.ops.batchnorm.Batchnorm('Generator.BN3', [0,2,3], output)
+    # if MODE == 'wgan':
+    # output = Batchnorm('Generator.BN3', [0,2,3], output)
     output = tf.nn.relu(output)
+    # output = tf.tanh(output)
 
     output = lib.ops.deconv2d.Deconv2D('Generator.5', DIM, 1, 5, output)
     output = tf.nn.sigmoid(output)
@@ -106,23 +134,26 @@ def DCGANDiscriminator(inputs):
     output = tf.reshape(inputs, [-1, 1, 28, 28])
 
     output = lib.ops.conv2d.Conv2D('Discriminator.1', 1, DIM, 5, output, stride=2)
-    output = LeakyReLU(output)
+    output = tf.nn.relu(output)
+    # output = tf.tanh(output)
 
-    output = tf.nn.dropout(output, KEEP_PROB, noise_shape=[BATCH_SIZE, DIM, 1, 1])
+    # output = tf.nn.dropout(output, KEEP_PROB, noise_shape=[BATCH_SIZE, DIM, 1, 1])
 
     output = lib.ops.conv2d.Conv2D('Discriminator.2', DIM, 2*DIM, 5, output, stride=2)
-    if MODE == 'wgan':
-        output = lib.ops.batchnorm.Batchnorm('Discriminator.BN2', [0,2,3], output)
-    output = LeakyReLU(output)
+    # if MODE == 'wgan':
+    # output = Batchnorm('Discriminator.BN2', [0,2,3], output)
+    output = tf.nn.relu(output)
+    # output = tf.tanh(output)
 
-    output = tf.nn.dropout(output, KEEP_PROB, noise_shape=[BATCH_SIZE, 2*DIM, 1, 1])
+    # output = tf.nn.dropout(output, KEEP_PROB, noise_shape=[BATCH_SIZE, 2*DIM, 1, 1])
 
     output = lib.ops.conv2d.Conv2D('Discriminator.3', 2*DIM, 4*DIM, 5, output, stride=2)
-    if MODE == 'wgan':
-        output = lib.ops.batchnorm.Batchnorm('Discriminator.BN3', [0,2,3], output)
-    output = LeakyReLU(output)
+    # if MODE == 'wgan':
+    # output = Batchnorm('Discriminator.BN3', [0,2,3], output)
+    output = tf.nn.relu(output)
+    # output = tf.tanh(output)
 
-    output = tf.nn.dropout(output, KEEP_PROB, noise_shape=[BATCH_SIZE, 4*DIM, 1, 1])
+    # output = tf.nn.dropout(output, KEEP_PROB, noise_shape=[BATCH_SIZE, 4*DIM, 1, 1])
 
     output = tf.reshape(output, [-1, 4*4*4*DIM])
     output = lib.ops.linear.Linear('Discriminator.Output', 4*4*4*DIM, 1, output)
@@ -170,10 +201,10 @@ elif MODE == 'wgan-gp':
     slopes = tf.sqrt(tf.reduce_sum(tf.square(gradients), reduction_indices=[1]))
     lipschitz_penalty = tf.reduce_mean((slopes-1.)**2)
     wasserstein = disc_cost
-    disc_cost += 10*lipschitz_penalty
+    # disc_cost += 10*lipschitz_penalty
 
-    gen_train_op = tf.train.AdamOptimizer(learning_rate=1e-4, beta1=0.5, beta2=0.9).minimize(gen_cost, var_list=lib.params_with_name('Generator'))
-    disc_train_op = tf.train.AdamOptimizer(learning_rate=1e-4, beta1=0.5, beta2=0.9).minimize(disc_cost, var_list=lib.params_with_name('Discriminator.'))
+    gen_train_op = tf.train.AdamOptimizer(learning_rate=5e-4, beta1=0.5).minimize(gen_cost, var_list=lib.params_with_name('Generator'))
+    disc_train_op = tf.train.AdamOptimizer(learning_rate=5e-4, beta1=0.5).minimize(disc_cost, var_list=lib.params_with_name('Discriminator.'))
 
     clip_disc_weights = None
 
@@ -183,8 +214,8 @@ elif MODE == 'dcgan':
     disc_cost += tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_real, tf.ones_like(disc_real)))
     disc_cost /= 2.
 
-    gen_train_op = tf.train.AdamOptimizer(learning_rate=2e-4, beta1=0.5).minimize(gen_cost, var_list=lib.params_with_name('Generator'))
-    disc_train_op = tf.train.AdamOptimizer(learning_rate=2e-4, beta1=0.5).minimize(disc_cost, var_list=lib.params_with_name('Discriminator.'))
+    gen_train_op = tf.train.AdamOptimizer(learning_rate=5e-4, beta1=0.5).minimize(gen_cost, var_list=lib.params_with_name('Generator'))
+    disc_train_op = tf.train.AdamOptimizer(learning_rate=5e-4, beta1=0.5).minimize(disc_cost, var_list=lib.params_with_name('Discriminator.'))
 
 frame_i = [0]
 fixed_noise = tf.constant(np.random.normal(size=(128, 128)).astype('float32'))
@@ -217,7 +248,7 @@ with tf.Session() as session:
         if MODE == 'dcgan':
             disc_iters = 1
         else:
-            disc_iters = 5
+            disc_iters = 1
         for i in xrange(disc_iters):
             _data = gen.next()
             _disc_cost, _wasserstein, _lipschitz_penalty, _ = session.run([disc_cost, wasserstein, lipschitz_penalty, disc_train_op], feed_dict={real_data: _data})
@@ -240,7 +271,6 @@ with tf.Session() as session:
 
             generate_image(iteration, _data)
 
-        if (iteration < 5) or (iteration % 100 == 99):
-            lib.plot.flush()
+        lib.plot.flush()
 
         lib.plot.tick()

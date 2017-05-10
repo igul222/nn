@@ -48,6 +48,10 @@ ITERS = 200000
 MODE = 'wgan-gp' # dcgan, wgan, wgan-gp, lsgan
 DATASET = 'lsun' # imagenet, lsun
 
+DISC_LR = 2e-4
+GEN_LR = 0.2*DISC_LR
+DECAY = False
+
 def GeneratorAndDiscriminator():
     # return FCGenerator, functools.partial(FCDiscriminator, FC_DIM=3072, n_layers=1)
     # return FCGenerator, FCDiscriminator
@@ -544,8 +548,31 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
         clip_disc_weights = tf.group(*clip_ops)
 
     elif MODE == 'wgan-gp':
-        gen_train_op = tf.train.AdamOptimizer(learning_rate=1e-4, beta1=0.5, beta2=0.9).minimize(gen_cost, var_list=lib.params_with_name('Generator'), colocate_gradients_with_ops=True)
-        disc_train_op = tf.train.AdamOptimizer(learning_rate=1e-4, beta1=0.5, beta2=0.9).minimize(disc_cost, var_list=lib.params_with_name('Discriminator.'), colocate_gradients_with_ops=True)
+
+        gen_params = lib.params_with_name('Generator')
+        disc_params = lib.params_with_name('Discriminator')
+        all_params = gen_params + disc_params
+        all_grads = tf.gradients(disc_cost, all_params, gate_gradients=True)
+        gen_grads, disc_grads = all_grads[:len(gen_params)], all_grads[len(gen_params):]
+        # Generator optimizes -disc_loss
+        gen_grads = [-1*gg for gg in gen_grads]
+        if DECAY:
+            decay = tf.maximum(0., 1.-(tf.cast(iteration, tf.float32)/ITERS))
+        else:
+            decay = 1.
+        gen_train_op = tf.train.AdamOptimizer(
+            learning_rate=GEN_LR*decay, 
+            beta1=.0, 
+            beta2=.9
+        ).apply_gradients(zip(gen_grads, gen_params))
+        disc_train_op = tf.train.AdamOptimizer(
+            learning_rate=DISC_LR*decay, 
+            beta1=.0, 
+            beta2=.9
+        ).apply_gradients(zip(disc_grads, disc_params))
+        # gen_train_op = tf.train.AdamOptimizer(learning_rate=1e-4, beta1=0.5, beta2=0.9).minimize(gen_cost, var_list=lib.params_with_name('Generator'), colocate_gradients_with_ops=True)
+        # disc_train_op = tf.train.AdamOptimizer(learning_rate=1e-4, beta1=0.5, beta2=0.9).minimize(disc_cost, var_list=lib.params_with_name('Discriminator.'), colocate_gradients_with_ops=True)
+
     elif MODE == 'dcgan':
         gen_train_op = tf.train.AdamOptimizer(learning_rate=2e-4, beta1=0.5).minimize(gen_cost, var_list=lib.params_with_name('Generator'), colocate_gradients_with_ops=True)
         disc_train_op = tf.train.AdamOptimizer(learning_rate=2e-4, beta1=0.5).minimize(disc_cost, var_list=lib.params_with_name('Discriminator.'), colocate_gradients_with_ops=True)
@@ -597,22 +624,22 @@ with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
 
         start_time = time.time()
 
-        if iteration > 0:
-            _ = session.run(gen_train_op)
+        # if iteration > 0:
+        #     _ = session.run(gen_train_op)
 
         if (MODE == 'dcgan') or (MODE == 'lsgan'):
             disc_iters = 1
         else:
             disc_iters = 1
         for i in xrange(disc_iters):
-            data_start_time = time.time()
+            # data_start_time = time.time()
             _data = gen.next()
-            lib.plot.plot('data time', time.time() - data_start_time)
-            _disc_cost, _ = session.run([disc_cost, disc_train_op], feed_dict={all_real_data_conv: _data})
+            # lib.plot.plot('data time', time.time() - data_start_time)
+            _disc_cost, _, _ = session.run([disc_cost, disc_train_op, gen_train_op], feed_dict={all_real_data_conv: _data})
             if MODE == 'wgan':
                 _ = session.run([clip_disc_weights])
 
-        lib.plot.plot('train disc cost', _disc_cost)
+        lib.plot.plot('cost', _disc_cost)
 
         lib.plot.plot('time', time.time() - start_time)
 

@@ -1,9 +1,3 @@
-"""Generative Adversarial Network for MNIST."""
-
-# Ideas:
-# Penalize information retention by the discriminator (to prevent time-wise sparse gradients); i.e. encourage forget-gate activation
-# EBGAN
-
 import os, sys
 sys.path.append(os.getcwd())
 
@@ -16,11 +10,8 @@ except ImportError:
 import tflib as lib
 import tflib.debug
 import tflib.ops.linear
-# import tflib.ops.rnn
-# import tflib.ops.gru
 import tflib.ops.conv1d
 import tflib.ops.batchnorm
-import tflib.plot
 
 import data_tools
 import tflib.save_images
@@ -72,16 +63,9 @@ SETTINGS = {
     'gen_lm': False # doesn't help
 }
 
-MOMENTUM_G = 0.5
-MOMENTUM_D = 0.
-DEPTH = 5
-MULTIPLICATIVE_D = False
-MULTIPLICATIVE_G = False
-GEN_BS_MULTIPLE = 8
-LR = 2e-4
-DECAY = True
+print 'WARNING extra_disciters=4 instead of 9'
+print 'warning 512dim, extra_disciters=9, 5xconvs, deep'
 
-lib.print_model_settings(locals().copy())
 lib.print_model_settings_dict(SETTINGS)
 
 get_epoch, charmap, inv_charmap = data_tools.load_dataset_big(BATCH_SIZE, SEQ_LEN)
@@ -169,8 +153,12 @@ def Generator(n_samples, prev_outputs=None):
     output = lib.ops.linear.Linear('Generator.Input', 128, SEQ_LEN*SETTINGS['dim_g'], output)
     output = tf.reshape(output, [-1, SETTINGS['dim_g'], SEQ_LEN])
 
-    for i in xrange(DEPTH):
-        output = ResBlockG('Generator.Res{}'.format(i), output)
+    # print "warning 2layer gen"
+    output = ResBlockG('Generator.1', output)
+    output = ResBlockG('Generator.2', output)
+    output = ResBlockG('Generator.3', output)
+    output = ResBlockG('Generator.4', output)
+    output = ResBlockG('Generator.5', output)
 
     output = lib.ops.conv1d.Conv1D('Generator.Output', SETTINGS['dim_g'], len(charmap), 1, output)
     output = tf.transpose(output, [0, 2, 1])
@@ -265,44 +253,25 @@ def GatedResBlock(name, inputs):
 def ResBlock(name, inputs, filter_size=5):
     output = inputs
     dim = SETTINGS['dim']
-    if MULTIPLICATIVE_D:
-        output = tf.nn.relu(output)
-        output = lib.ops.conv1d.Conv1D(name+'.1', dim, dim, filter_size, output)
-        output = tf.tanh(output[:,::2]) * tf.nn.sigmoid(output[:,1::2])
-        output = lib.ops.conv1d.Conv1D(name+'.2', dim/2, dim, filter_size, output)
-    else:    
-        output = tf.nn.relu(output)
-        output = lib.ops.conv1d.Conv1D(name+'.1', dim, dim, filter_size, output)
-        output = tf.nn.relu(output)
-        output = lib.ops.conv1d.Conv1D(name+'.2', dim, dim, filter_size, output)
+    output = tf.nn.relu(output)
+    print "WARNING ResBlock x5 convs"
+    output_a = lib.ops.conv1d.Conv1D(name+'.1', dim, dim, filter_size, output)
+    # output_b = lib.ops.conv1d.Conv1D(name+'.2', dim, dim, 3, output)
+    # output = tf.nn.sigmoid(output_a) * tf.tanh(output_b)
+    output = tf.nn.relu(output_a)
+    output = lib.ops.conv1d.Conv1D(name+'.2', dim, dim, filter_size, output)
     # output = lib.ops.batchnorm.Batchnorm(name+'.BN', [0,2], output)
     return inputs + (0.3*output)
-
-def Normalize(name, inputs):
-    if MODE == 'wgan-gp':
-        if ('Discriminator' in name) and NORMALIZATION_D:
-            return lib.ops.layernorm.Layernorm(name,[1,2,3],inputs)
-        elif ('Generator' in name) and NORMALIZATION_G:
-            return lib.ops.batchnorm.Batchnorm(name,[0,2,3],inputs,fused=True)
-        else:
-            return inputs
-    else:
-        return lib.ops.batchnorm.Batchnorm(name,[0,2,3],inputs,fused=True)
-
 
 def ResBlockG(name, inputs):
     output = inputs
     dim = SETTINGS['dim_g']
-    if MULTIPLICATIVE_G:
-        output = tf.nn.relu(output)
-        output = lib.ops.conv1d.Conv1D(name+'.1', dim, dim, 5, output)
-        output = tf.tanh(output[:,::2]) * tf.nn.sigmoid(output[:,1::2])
-        output = lib.ops.conv1d.Conv1D(name+'.2', dim/2, dim, 5, output)
-    else:
-        output = tf.nn.relu(output)
-        output = lib.ops.conv1d.Conv1D(name+'.1', dim, dim, 5, output)
-        output = tf.nn.relu(output)
-        output = lib.ops.conv1d.Conv1D(name+'.2', dim, dim, 5, output)
+    print "WARNING ResBlockG 5 convs"
+    output = tf.nn.relu(output)
+    output_a = lib.ops.conv1d.Conv1D(name+'.1', dim, dim, 5, output)
+    output = tf.nn.relu(output_a)
+    output = lib.ops.conv1d.Conv1D(name+'.2', dim, dim, 5, output)
+    # output = lib.ops.batchnorm.Batchnorm(name+'.BN', [0,2], output)
     return inputs + (0.3*output)
 
 def ResBlockUpsample(name, dim_in, dim_out, inputs):
@@ -330,8 +299,11 @@ def Discriminator(inputs):
     output = tf.transpose(inputs, [0,2,1])
     output = lib.ops.conv1d.Conv1D('Discriminator.1', len(charmap), SETTINGS['dim'], 1, output)
 
-    for i in xrange(DEPTH):
-        output = ResBlock('Discriminator.Res{}'.format(i), output)
+    output = ResBlock('Discriminator.2', output)
+    output = ResBlock('Discriminator.3', output)
+    output = ResBlock('Discriminator.4', output)
+    output = ResBlock('Discriminator.5', output)
+    output = ResBlock('Discriminator.6', output)
 
     # output = tf.reduce_mean(output, reduction_indices=[2])
     output = tf.reshape(output, [-1, SEQ_LEN*SETTINGS['dim']])
@@ -384,7 +356,6 @@ def Discriminator(inputs):
 #         outputs.append(output)
 #     return tf.concat(0, outputs), language_model_output, features # we apply the sigmoid later
 
-_iteration = tf.placeholder(tf.int32, shape=None)
 real_inputs_discrete = tf.placeholder(tf.int32, shape=[BATCH_SIZE, SEQ_LEN])
 real_inputs = tf.one_hot(real_inputs_discrete, len(charmap))
 fake_inputs, _ = Generator(BATCH_SIZE)
@@ -393,7 +364,7 @@ fake_inputs_discrete = tf.argmax(fake_inputs, fake_inputs.get_shape().ndims-1)
 disc_real, disc_real_lm, disc_real_features = Discriminator(real_inputs) 
 disc_fake, disc_fake_lm, disc_fake_features = Discriminator(fake_inputs)
 # disc_out = Discriminator(tf.concat([real_inputs, fake_inputs], 0))[0]
-disc_out = Discriminator(lib.concat([real_inputs, fake_inputs], 0))[0]
+disc_out = Discriminator(tf.concat(0, [real_inputs, fake_inputs]))[0]
 disc_real = disc_out[:BATCH_SIZE]
 disc_fake = disc_out[BATCH_SIZE:]
 
@@ -404,8 +375,8 @@ if SETTINGS['feature_matching']:
     for gc in gen_costs:
         gen_cost = gen_cost + gc
 elif SETTINGS['wgan']:
-    gen_cost = -tf.reduce_mean(Discriminator(Generator(GEN_BS_MULTIPLE*BATCH_SIZE)[0])[0])
-
+    # print "WARNING 4x generator batch size"
+    gen_cost = -tf.reduce_mean(Discriminator(Generator(BATCH_SIZE)[0])[0])
 else:
     if SETTINGS['one_sided_label_smoothing']:
         raise Exception('check this implementation')
@@ -477,12 +448,9 @@ if SETTINGS['wgan']:
     # gen_train_op = tf.train.RMSPropOptimizer(learning_rate=5e-4).minimize(gen_cost, var_list=lib.params_with_name('Generator'))
     # disc_train_op = tf.train.RMSPropOptimizer(learning_rate=5e-4).minimize(disc_cost, var_list=lib.params_with_name('Discriminator'))
     # disc_train_op_nopenalty = tf.train.RMSPropOptimizer(learning_rate=5e-4).minimize(wgan_disc_cost, var_list=lib.params_with_name('Discriminator'))
-    if DECAY:
-        decay = tf.maximum(0., 1.-(tf.cast(_iteration, tf.float32)/ITERS))
-    else:
-        decay = 1.
-    gen_train_op = tf.train.AdamOptimizer(learning_rate=LR*decay, beta1=MOMENTUM_G, beta2=0.9).minimize(gen_cost, var_list=lib.params_with_name('Generator'))
-    disc_train_op = tf.train.AdamOptimizer(learning_rate=LR*decay, beta1=MOMENTUM_D, beta2=0.9).minimize(disc_cost, var_list=lib.params_with_name('Discriminator'))
+
+    gen_train_op = tf.train.AdamOptimizer(learning_rate=1e-4, beta1=0.5, beta2=0.9).minimize(gen_cost, var_list=lib.params_with_name('Generator'))
+    disc_train_op = tf.train.AdamOptimizer(learning_rate=1e-4, beta1=0.5, beta2=0.9).minimize(disc_cost, var_list=lib.params_with_name('Discriminator'))
 
     assigns = []
     for var in lib.params_with_name('Discriminator'):
@@ -538,48 +506,56 @@ with tf.Session() as session:
             decoded_samples.append(''.join(decoded))
         return decoded_samples
 
-    def save_samples_and_get_jses(iteration):
+    def callback(iteration):
         samples = []
         for i in xrange(10):
             samples.extend(generate_samples())
-
-        with open('samples_{}.txt'.format(iteration), 'w') as f:
-            for s in samples:
-                s = "".join(s)
-                f.write(s + "\n")
 
         jses = []
         for i in xrange(4):
             lm = data_tools.NgramLanguageModel(i+1, samples, tokenize=False)
             jses.append(lm.js_with(true_char_ngram_lms[i]))
 
-        return jses
+        print "ngram JSes: {}".format(jses)
+        # generator_char_lm = data_tools.NgramLanguageModel(1, samples, tokenize=False)
+        # generator_word_lm = data_tools.NgramLanguageModel(1, samples, tokenize=True)
+        # print "char KL: {}\tword precision: {}".format(true_char_lm.kl_to(generator_char_lm), true_word_lm.precision_wrt(generator_word_lm))
+
+        with open('samples_{}.txt'.format(iteration), 'w') as f:
+            for s in samples:
+                s = "".join(s)
+                f.write(s + "\n")
 
     gen = iterate_dataset()
+    gen_costs = []
+    disc_costs = []
+    lipschitz_penalties = []
 
     disc_iters = SETTINGS['extra_disc_steps']+1
+    fake_inputs_batch,_ = Generator(disc_iters*BATCH_SIZE)
 
     for iteration in xrange(ITERS):
 
         start_time = time.time()
 
+        _data = gen.next()
+
+        _fake_inputs_batch = session.run(fake_inputs_batch)
         for i in xrange(disc_iters):
+            j = i % disc_iters
             _data = gen.next()
-            _disc_cost, _ = session.run([disc_cost, disc_train_op], feed_dict={real_inputs_discrete:_data,_iteration:iteration})
-        lib.plot.plot('cost', _disc_cost)
+            _disc_cost, _lipschitz_penalty, _ = session.run([disc_cost, lipschitz_penalty, disc_train_op], feed_dict={real_inputs_discrete:_data, fake_inputs: _fake_inputs_batch[BATCH_SIZE*j:BATCH_SIZE*(j+1)]})
+            # _ = session.run([clip_disc_weights])
+        disc_costs.append(_disc_cost)
+        lipschitz_penalties.append(_lipschitz_penalty)
 
         _data = gen.next()
-        _ = session.run(gen_train_op, feed_dict={real_inputs_discrete:_data,_iteration:iteration})
+        _gen_cost, _ = session.run([gen_cost, gen_train_op], feed_dict={real_inputs_discrete:_data})
+        gen_costs.append(_gen_cost)
 
-        if iteration % 10 == 0:
-            lib.plot.plot('time', time.time() - start_time)
+        if iteration % 100 == 0:
+            print "iter:{}\tdisc:{:.6f} {:.6f}\tgen:{:.6f}\ttime:{:.6f}".format(iteration, np.mean(disc_costs), np.mean(lipschitz_penalties), np.mean(gen_costs), time.time() - start_time)
+            disc_costs, lipschitz_penalties, gen_costs = [], [], []
 
-        if iteration % 100 == 99:
-            jses = save_samples_and_get_jses(iteration)
-            for i, js in enumerate(jses):
-                lib.plot.plot('js{}'.format(i+1), js)
-
-        if iteration % 1000 == 999:
-            lib.plot.flush()
-
-        lib.plot.tick()
+        if iteration % 100 == 0:
+            callback(iteration)

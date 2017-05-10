@@ -5,7 +5,11 @@ from fuel.schemes import ShuffledScheme, SequentialScheme
 from fuel.streams import DataStream
 from fuel.transformers.image import RandomFixedSizeCrop
 
-PATH = '/home/ishaan/lsun_bedrooms_2727000_64px.hdf5'
+import os
+PATH = '/media/ramdisk/lsun_bedrooms_2727000_64px.hdf5'
+if not os.path.isfile(PATH):
+    PATH = '/home/ishaan/data/lsun_bedrooms_2727000_64px.hdf5'
+
 
 from scipy.misc import imsave
 def color_grid_vis(X, nh, nw, save_path):

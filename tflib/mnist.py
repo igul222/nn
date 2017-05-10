@@ -5,11 +5,17 @@ import urllib
 import gzip
 import cPickle as pickle
 
-def mnist_generator(data, batch_size, n_labelled):
+def mnist_generator(data, batch_size, n_labelled, limit=None):
     images, targets = data
 
-    images = images.astype('float32')
-    targets = targets.astype('int32')
+    rng_state = numpy.random.get_state()
+    numpy.random.shuffle(images)
+    numpy.random.set_state(rng_state)
+    numpy.random.shuffle(targets)
+    if limit is not None:
+        print "WARNING ONLY FIRST {} MNIST DIGITS".format(limit)
+        images = images.astype('float32')[:limit]
+        targets = targets.astype('int32')[:limit]
     if n_labelled is not None:
         labelled = numpy.zeros(len(images), dtype='int32')
         labelled[:n_labelled] = 1

@@ -114,7 +114,7 @@ def Conv2D(name, input_dim, output_dim, filter_size, inputs, he_init=True, mask_
 
         if biases:
             _biases = lib.param(
-                name+'.Biases',
+                name+'.b',
                 np.zeros(output_dim, dtype='float32')
             )
 

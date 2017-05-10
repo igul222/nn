@@ -3,6 +3,7 @@ import tflib.ops.linear
 
 import numpy as np
 import tensorflow as tf
+# import tf.contrib.rnn.core_rnn_cell
 
 def GRUStep(name, n_in, n_hid, inputs, state):
         gates = tf.nn.sigmoid(
@@ -10,11 +11,13 @@ def GRUStep(name, n_in, n_hid, inputs, state):
                 name+'.Gates',
                 n_in + n_hid,
                 2 * n_hid,
-                tf.concat(1, [inputs, state])
+                tf.concat([inputs, state], 1)
+                # tf.concat(1, [inputs, state])
             )
         )
 
-        update, reset = tf.split(1, 2, gates)
+        # update, reset = tf.split(1, 2, gates)
+        update, reset = tf.split(gates, 2, 1)
         scaled_state = reset * state
 
         candidate = tf.tanh(
@@ -22,7 +25,8 @@ def GRUStep(name, n_in, n_hid, inputs, state):
                 name+'.Candidate', 
                 n_in + n_hid, 
                 n_hid, 
-                tf.concat(1, [inputs, scaled_state])
+                tf.concat([inputs, scaled_state], 1)
+                # tf.concat(1, [inputs, scaled_state])
             )
         )
 
@@ -30,7 +34,8 @@ def GRUStep(name, n_in, n_hid, inputs, state):
 
         return output
 
-class GRUCell(tf.nn.rnn_cell.RNNCell):
+# class GRUCell(tf.nn.rnn_cell.RNNCell):
+class GRUCell(tf.contrib.rnn.core_rnn_cell.RNNCell):
     def __init__(self, name, n_in, n_hid):
         self._n_in = n_in
         self._n_hid = n_hid
@@ -52,7 +57,9 @@ def GRU(name, n_in, n_hid, inputs, h0=None):
     if h0 is None:
         batch_size = tf.shape(inputs)[0]
         h0 = lib.param(name+'.h0', np.zeros(n_hid, dtype='float32'))
-        h0 = tf.reshape(tf.tile(h0, tf.pack([batch_size])), tf.pack([batch_size, n_hid]))
+        # h0 = tf.reshape(tf.tile(h0, tf.pack([batch_size])), tf.pack([batch_size, n_hid]))
+        h0 = tf.reshape(tf.tile(h0, tf.stack([batch_size])), tf.stack([batch_size, n_hid]))
+
     return tf.nn.dynamic_rnn(GRUCell(name, n_in, n_hid), inputs, initial_state=h0, swap_memory=True)[0]
 
 # class GRUCell(tf.nn.rnn_cell.RNNCell):

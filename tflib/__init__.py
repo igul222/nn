@@ -34,7 +34,8 @@ def param(name, *args, **kwargs):
     return result
 
 def params_with_name(name):
-    return [p for n,p in _params.items() if name in n]
+    trainable_vars = tf.trainable_variables()
+    return [p for n,p in _params.items() if (name in n) and (p in trainable_vars)]
 
 def delete_all_params():
     _params.clear()
@@ -112,3 +113,15 @@ def print_model_settings_dict(settings):
     all_vars = sorted(all_vars, key=lambda x: x[0])
     for var_name, var_value in all_vars:
         print "\t{}: {}".format(var_name, var_value)
+
+def concat(x, axis):
+    if tf.__version__.startswith('1.'):
+        return tf.concat(x,axis)
+    else:
+        return tf.concat(axis,x)
+
+def split(x, n, axis):
+    if tf.__version__.startswith('1.'):
+        return tf.split(x, n, axis=axis)
+    else:
+        return tf.split(axis, n, x)

@@ -2,12 +2,15 @@ import collections
 import numpy as np
 import re
 
+def tokenize_string(sample):
+    return tuple(sample.lower().split(' '))
+
 class NgramLanguageModel(object):
     def __init__(self, n, samples, tokenize=False):
         if tokenize:
             tokenized_samples = []
             for sample in samples:
-                tokenized_samples.append(tuple(re.sub(r'[^a-z ]+', '', sample.lower()).split(' ')))
+                tokenized_samples.append(tokenize_string(sample))
             samples = tokenized_samples
 
         self._n = n
@@ -102,30 +105,102 @@ class NgramLanguageModel(object):
 
         return 0.5*(kl_p_m + kl_q_m) / np.log(2)
 
-def load_dataset(max_length, max_n_examples):
+def load_dataset(max_length, max_n_examples, tokenize=False, max_vocab_size=2048):
     lines = []
 
+    # print "WARNING SHAKESPEARE"
+    # with open('/media/ramdisk/shakespeare.txt', 'r') as f:
+    #     for line in f:
+    #         line = line[:-1]
+    #         if len(line) > 16:
+    #             line = line[:16]
+    #         lines.append(line + ("`"*(16-len(line))))
+
     finished = False
+
+    # print 'WARNING OPENSUBTITLES'
+    # for i in xrange(2316):
+    #     path = "/media/ramdisk/opensubtitles-parser/data/{}raw.txt".format(str(i+1))
     for i in xrange(99):
         path = "/home/ishaan/data/1-billion-word-language-modeling-benchmark-r13output/training-monolingual.tokenized.shuffled/news.en-{}-of-00100".format(str(i+1).zfill(5))
         with open(path, 'r') as f:
             for line in f:
-                if .5*max_length < len(line)-1 < max_length:
-                    line = line[:-1]
-                    lines.append(line + ("`"*(max_length-len(line))))
+                line = line[:-1]
+                if tokenize:
+                    line = tokenize_string(line)
+                else:
+                    line = tuple(line)
+
+                if len(line) > max_length:
+                    line = line[:max_length]
+
+                lines.append(line + ( ("`",)*(max_length-len(line)) ) )
+
                 if len(lines) == max_n_examples:
                     finished = True
                     break
         if finished:
             break
 
+    np.random.shuffle(lines)
+
+    import collections
+    counts = collections.Counter(char for line in lines for char in line)
+
+    charmap = {'unk':0}
+    inv_charmap = ['unk']
+
+    for char,count in counts.most_common(max_vocab_size-1):
+        if char not in charmap:
+            charmap[char] = len(inv_charmap)
+            inv_charmap.append(char)
+
+    filtered_lines = []
+    for line in lines:
+        filtered_line = []
+        for char in line:
+            if char in charmap:
+                filtered_line.append(char)
+            else:
+                filtered_line.append('unk')
+        filtered_lines.append(tuple(filtered_line))
+
+    for i in xrange(100):
+        print filtered_lines[i]
+
+    print "loaded {} lines in dataset".format(len(lines))
+    return filtered_lines, charmap, inv_charmap
+
+def load_dataset_big(batch_size, max_length):
+    all_lines = []
+    for i in xrange(99):
+        path = "/home/ishaan/data/1-billion-word-language-modeling-benchmark-r13output/training-monolingual.tokenized.shuffled/news.en-{}-of-00100".format(str(i+1).zfill(5))
+        with open(path, 'r') as f:
+            for line in f:
+                line = line[:-1]+' ' # Replace trailing \n with a space
+                all_lines.append(line)
+
     charmap = {}
     inv_charmap = []
-    for line in lines:
+
+    for line in all_lines:
         for char in line:
             if char not in charmap:
                 charmap[char] = len(inv_charmap)
                 inv_charmap.append(char)
 
-    print "loaded {} lines in dataset".format(len(lines))
-    return lines, charmap, inv_charmap
+    def get_epoch():
+        np.random.shuffle(all_lines)
+        all_lines_idx = 0
+        buffer = ''
+        while True:
+            while len(buffer) < max_length*batch_size:
+                if all_lines_idx >= len(all_lines):
+                    return
+                buffer += all_lines[all_lines_idx]
+                all_lines_idx += 1
+            yield [buffer[max_length*i:max_length*(i+1)] 
+                for i in xrange(batch_size)]
+            buffer = buffer[batch_size*max_length:]
+
+    return get_epoch, charmap, inv_charmap
