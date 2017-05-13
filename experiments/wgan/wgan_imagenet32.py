@@ -3,7 +3,7 @@
 import os, sys
 sys.path.append(os.getcwd())
 
-N_GPUS = 2
+N_GPUS = 4
 
 # try: # This only matters on Ishaan's computer
 import experiment_tools
@@ -48,7 +48,7 @@ DATASET = 'imagenet'
 DIM_G = 32
 DIM_D = 64
 # These settings apply only to WGAN-GP
-EXTRA_DEPTH_G = 2
+EXTRA_DEPTH_G = 0
 EXTRA_DEPTH_D = 2
 # GEN_LR = e-5
 # DISC_LR = GEN_LR * 10

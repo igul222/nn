@@ -30,12 +30,18 @@ def make_generator(path, batch_size):
             images[n % batch_size] = image
 
             if n > 0 and n % batch_size == 0:
+
+                # Random horizontal flips
+                if np.random.uniform() > 0.5:
+                    images = images[:,:,:,::-1]
+
                 yield (images,)
 
     return get_epoch
 
 def load(batch_size):
     return make_generator('/media/ramdisk/ILSVRC2012_128', batch_size)
+    # return make_generator('/home/ishaan/data/ILSVRC2012_128', batch_size)
 
 if __name__ == '__main__':
     train_gen = load(128)

@@ -48,12 +48,13 @@ def ReLULayer(name, n_in, n_out, inputs, alpha=0., bn=False, wn=False):
     return output
 
 def Generator(n_samples, real_data):
-    return real_data + (1.*tf.random_normal(tf.shape(real_data)))
+    # return real_data + (1.*tf.random_normal(tf.shape(real_data)))
 
     noise = tf.random_normal([n_samples, 2])
 
     output = ReLULayer('Generator.1', 2, 512, noise)
     output = ReLULayer('Generator.2', 512, 512, output)
+    # output *= 0. # Forces the generator to collapse to a point
     output = lib.ops.linear.Linear('Generator.Out', 512, 2, output)
 
     return output
@@ -129,6 +130,7 @@ def generate_image(true_dist):
     points = points.reshape((-1,2))
     # samples, disc_map = session.run([fake_data_1000, (disc_real)], feed_dict={real_data:points})
     disc_map = session.run(disc_real, feed_dict={real_data:points})
+    samples = session.run(fake_data, feed_dict={real_data:points})
 
     plt.clf()
     # plt.imshow(disc_map.reshape((N_POINTS, N_POINTS)).T[::-1, :], extent=[-RANGE, RANGE, -RANGE, RANGE], cmap='seismic', vmin=np.min(disc_map), vmax=np.max(disc_map))
@@ -141,7 +143,7 @@ def generate_image(true_dist):
     plt.contour(x,y,disc_map.reshape((len(x), len(y))).transpose())
 
     plt.scatter(true_dist[:, 0], true_dist[:, 1], c='orange',  marker='+')
-    # plt.scatter(samples[:, 0],    samples[:, 1],    c='green', marker='+')
+    plt.scatter(samples[:, 0],    samples[:, 1],    c='green', marker='+')
 
     # frame1 = plt.gca()
     # frame1.axes.get_xaxis().set_visible(False)

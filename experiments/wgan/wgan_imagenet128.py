@@ -15,6 +15,7 @@ except ImportError:
 import tflib as lib
 import tflib.ops.linear
 import tflib.ops.conv2d
+import tflib.ops.deconv2d
 import tflib.ops.batchnorm
 import tflib.ops.layernorm
 import tflib.save_images
@@ -24,36 +25,35 @@ import tflib.plot
 import numpy as np
 import tensorflow as tf
 
+import os
 import time
 import functools
 
-BATCH_SIZE = 32
+BATCH_SIZE = 64
 DATASET = 'imagenet'
 
-DIM_G_128 = 64
-DIM_G_64  = 128
-DIM_G_32  = 256
+DIM_G_64  = 64
+DIM_G_32  = 128
 DIM_G_16  = 256
 DIM_G_8   = 512
 DIM_G_4   = 512
 
-DIM_D_128 = 64
 DIM_D_64  = 128
 DIM_D_32  = 256
 DIM_D_16  = 512
-DIM_D_8   = 512
-DIM_D_4   = 512
+DIM_D_8   = 1024
+DIM_D_4   = 1024
 
 NORMALIZATION_G = True
 NORMALIZATION_D = True
 
 ITERS = 200000
-LR = 2e-4
+LR = 1e-4
 DECAY = True
 CRITIC_ITERS = 5
 MOMENTUM_G = 0.
 MOMENTUM_D = 0.
-GEN_BS_MULTIPLE = 2
+GEN_BS_MULTIPLE = 1
 
 def GeneratorAndDiscriminator():
     return ResnetGenerator, ResnetDiscriminator
@@ -77,15 +77,20 @@ def ConvMeanPool(name, input_dim, output_dim, filter_size, inputs, he_init=True,
     output = tf.add_n([output[:,:,::2,::2], output[:,:,1::2,::2], output[:,:,::2,1::2], output[:,:,1::2,1::2]]) / 4.
     return output
 
-def UpsampleConv(name, input_dim, output_dim, filter_size, inputs, he_init=True, biases=True):
+def MeanPoolConv(name, input_dim, output_dim, filter_size, inputs, he_init=True, biases=True):
+    output = inputs
+    output = tf.add_n([output[:,:,::2,::2], output[:,:,1::2,::2], output[:,:,::2,1::2], output[:,:,1::2,1::2]]) / 4.
+    output = lib.ops.conv2d.Conv2D(name, input_dim, output_dim, filter_size, output, he_init=he_init, biases=biases)
+    return output
+
+def ScaledUpsampleConv(name, input_dim, output_dim, filter_size, inputs, he_init=True, biases=True):
     output = inputs
     output = lib.concat([output, output, output, output], axis=1)
     output = tf.transpose(output, [0,2,3,1])
     output = tf.depth_to_space(output, 2)
     output = tf.transpose(output, [0,3,1,2])
-    output = lib.ops.conv2d.Conv2D(name, input_dim, output_dim, filter_size, output, he_init=he_init, biases=biases)
+    output = lib.ops.conv2d.Conv2D(name, input_dim, output_dim, filter_size, output, he_init=he_init, biases=biases, gain=0.5)
     return output
-
 
 def ResidualBlock(name, input_dim, output_dim, filter_size, inputs, resample=None):
     """
@@ -93,12 +98,15 @@ def ResidualBlock(name, input_dim, output_dim, filter_size, inputs, resample=Non
     """
     if resample=='down':
         conv_1        = functools.partial(lib.ops.conv2d.Conv2D, input_dim=input_dim, output_dim=input_dim)
-        conv_2        = functools.partial(ConvMeanPool, input_dim=input_dim, output_dim=output_dim)
-        conv_shortcut = ConvMeanPool
+        conv_2        = functools.partial(lib.ops.conv2d.Conv2D, input_dim=input_dim, output_dim=output_dim, stride=2)
+        # conv_shortcut = functools.partial(lib.ops.conv2d.Conv2D, stride=2)
+        # conv_2        = functools.partial(ConvMeanPool, input_dim=input_dim, output_dim=output_dim)
+        conv_shortcut = MeanPoolConv
     elif resample=='up':
-        conv_1        = functools.partial(UpsampleConv, input_dim=input_dim, output_dim=output_dim)
+        conv_1        = functools.partial(ScaledUpsampleConv, input_dim=input_dim, output_dim=output_dim)
+        # conv_1        = functools.partial(lib.ops.deconv2d.Deconv2D, input_dim=input_dim, output_dim=output_dim)
         conv_2        = functools.partial(lib.ops.conv2d.Conv2D, input_dim=output_dim, output_dim=output_dim)
-        conv_shortcut = UpsampleConv
+        conv_shortcut = ScaledUpsampleConv
     elif resample==None:
         conv_shortcut = lib.ops.conv2d.Conv2D
         conv_1        = functools.partial(lib.ops.conv2d.Conv2D, input_dim=input_dim,  output_dim=output_dim)
@@ -109,7 +117,9 @@ def ResidualBlock(name, input_dim, output_dim, filter_size, inputs, resample=Non
     if output_dim==input_dim and resample==None:
         shortcut = inputs # Identity skip-connection
     else:
-        shortcut = conv_shortcut(name+'.Shortcut', input_dim=input_dim, output_dim=output_dim, filter_size=1, he_init=False, biases=True, inputs=inputs)
+        shortcut = inputs
+        # shortcut = Normalize(name+'.NShortcut', shortcut)
+        shortcut = conv_shortcut(name+'.Shortcut', input_dim=input_dim, output_dim=output_dim, filter_size=1, he_init=False, biases=True, inputs=shortcut)
 
     output = inputs
     output = Normalize(name+'.N1', output)
@@ -118,7 +128,10 @@ def ResidualBlock(name, input_dim, output_dim, filter_size, inputs, resample=Non
     output = Normalize(name+'.N2', output)
     output = nonlinearity(output)
     output = conv_2(name+'.Conv2', filter_size=filter_size, inputs=output)
-    return shortcut + (.3*output)
+    # output = Normalize(name+'.N3', output)
+    # return output
+    return shortcut + output
+    # return 0.7*(shortcut+output)
 
 def ResnetGenerator(n_samples, noise=None):
     if noise is None:
@@ -128,31 +141,25 @@ def ResnetGenerator(n_samples, noise=None):
     output = tf.reshape(output, [-1, DIM_G_4, 4, 4])
 
     # output = ResidualBlock('Generator.4_1', DIM_G_4, DIM_G_4, 3, output, resample=None)
-    output = ResidualBlock('Generator.4_2', DIM_G_4, DIM_G_4, 3, output, resample=None)
+    # output = ResidualBlock('Generator.4_2', DIM_G_4, DIM_G_4, 3, output, resample=None)
     output = ResidualBlock('Generator.4_3', DIM_G_4, DIM_G_8, 3, output, resample='up')
 
     # output = ResidualBlock('Generator.8_1', DIM_G_8, DIM_G_8, 3, output, resample=None)
-    output = ResidualBlock('Generator.8_2', DIM_G_8, DIM_G_8, 3, output, resample=None)
+    # output = ResidualBlock('Generator.8_2', DIM_G_8, DIM_G_8, 3, output, resample=None)
     output = ResidualBlock('Generator.8_3', DIM_G_8, DIM_G_16, 3, output, resample='up')
 
     # output = ResidualBlock('Generator.16_1', DIM_G_16, DIM_G_16, 3, output, resample=None)
-    output = ResidualBlock('Generator.16_2', DIM_G_16, DIM_G_16, 3, output, resample=None)
+    # output = ResidualBlock('Generator.16_2', DIM_G_16, DIM_G_16, 3, output, resample=None)
     output = ResidualBlock('Generator.16_3', DIM_G_16, DIM_G_32, 3, output, resample='up')
 
     # output = ResidualBlock('Generator.32_1', DIM_G_32, DIM_G_32, 3, output, resample=None)
-    output = ResidualBlock('Generator.32_2', DIM_G_32, DIM_G_32, 3, output, resample=None)
+    # output = ResidualBlock('Generator.32_2', DIM_G_32, DIM_G_32, 3, output, resample=None)
     output = ResidualBlock('Generator.32_3', DIM_G_32, DIM_G_64, 3, output, resample='up')
-
-    # output = ResidualBlock('Generator.64_1', DIM_G_64, DIM_G_64, 3, output, resample=None)
-    output = ResidualBlock('Generator.64_2', DIM_G_64, DIM_G_64, 3, output, resample=None)
-    output = ResidualBlock('Generator.64_3', DIM_G_64, DIM_G_128, 3, output, resample='up')
-
-    # output = ResidualBlock('Generator.128_1', DIM_G_128, DIM_G_128, 3, output, resample=None)
-    output = ResidualBlock('Generator.128_2', DIM_G_128, DIM_G_128, 3, output, resample=None)
 
     output = Normalize('Generator.OutputN', output)
     output = nonlinearity(output)
-    output = lib.ops.conv2d.Conv2D('Generator.Output', DIM_G_128, 3, 1, output, he_init=False)
+    output = UpsampleConv('Generator.Output', DIM_G_64, 3, 5, output, he_init=False)
+    # output = lib.ops.deconv2d.Deconv2D('Generator.Output', DIM_G_64, 3, 5, output, he_init=False)
 
     output = tf.tanh(output)
 
@@ -161,35 +168,36 @@ def ResnetGenerator(n_samples, noise=None):
 def ResnetDiscriminator(inputs):
     output = tf.reshape(inputs, [-1, 3, 128, 128])
 
-    output = lib.ops.conv2d.Conv2D('Discriminator.Input', 3, DIM_D_128, 1, output, he_init=False)
-
-    # output = ResidualBlock('Discriminator.128_1', DIM_D_128, DIM_D_128, 3, output, resample=None)
-    output = ResidualBlock('Discriminator.128_2', DIM_D_128, DIM_D_128, 3, output, resample=None)
-    output = ResidualBlock('Discriminator.128_3', DIM_D_128, DIM_D_64, 3, output, resample='down')
+    output = lib.ops.conv2d.Conv2D('Discriminator.Input', 3, DIM_D_64, 5, output, he_init=True, stride=2)
 
     # output = ResidualBlock('Discriminator.64_1', DIM_D_64, DIM_D_64, 3, output, resample=None)
-    output = ResidualBlock('Discriminator.64_2', DIM_D_64, DIM_D_64, 3, output, resample=None)
+    # output = ResidualBlock('Discriminator.64_2', DIM_D_64, DIM_D_64, 3, output, resample=None)
     output = ResidualBlock('Discriminator.64_3', DIM_D_64, DIM_D_32, 3, output, resample='down')
 
     # output = ResidualBlock('Discriminator.32_1', DIM_D_32, DIM_D_32, 3, output, resample=None)
-    output = ResidualBlock('Discriminator.32_2', DIM_D_32, DIM_D_32, 3, output, resample=None)
+    # output = ResidualBlock('Discriminator.32_2', DIM_D_32, DIM_D_32, 3, output, resample=None)
     output = ResidualBlock('Discriminator.32_3', DIM_D_32, DIM_D_16, 3, output, resample='down')
 
     # output = ResidualBlock('Discriminator.16_1', DIM_D_16, DIM_D_16, 3, output, resample=None)
-    output = ResidualBlock('Discriminator.16_2', DIM_D_16, DIM_D_16, 3, output, resample=None)
+    # output = ResidualBlock('Discriminator.16_2', DIM_D_16, DIM_D_16, 3, output, resample=None)
     output = ResidualBlock('Discriminator.16_3', DIM_D_16, DIM_D_8, 3, output, resample='down')
 
-    # output = ResidualBlock('Discriminator.8_1', DIM_D_8, DIM_D_8, 3, output, resample=None)
+    output = ResidualBlock('Discriminator.8_1', DIM_D_8, DIM_D_8, 3, output, resample=None)
     output = ResidualBlock('Discriminator.8_2', DIM_D_8, DIM_D_8, 3, output, resample=None)
-    output = ResidualBlock('Discriminator.8_3', DIM_D_8, DIM_D_4, 3, output, resample='down')
+    # output = ResidualBlock('Discriminator.8_3', DIM_D_8, DIM_D_4, 3, output, resample='down')
 
     # output = ResidualBlock('Discriminator.4_1', DIM_D_4, DIM_D_4, 3, output, resample=None)
-    output = ResidualBlock('Discriminator.4_2', DIM_D_4, DIM_D_4, 3, output, resample=None)
+    # output = ResidualBlock('Discriminator.4_2', DIM_D_4, DIM_D_4, 3, output, resample=None)
 
-    output = Normalize('Discriminator.OutputN', output)
-    output = nonlinearity(output)
-    output = tf.reshape(output, [-1, 4*4*DIM_D_4])
-    output = lib.ops.linear.Linear('Discriminator.Output', 4*4*DIM_D_4, 1, output)
+    # output = Normalize('Discriminator.OutputN', output)
+    # output = output / 10.
+    output = tf.reduce_mean(output, axis=[2,3])
+    output = lib.ops.linear.Linear('Discriminator.Output', DIM_D_8, 1, output)
+
+    # output = Normalize('Discriminator.OutputN', output)
+    # output = nonlinearity(output)
+    # output = tf.reshape(output, [-1, 4*4*DIM_D_4])
+    # output = lib.ops.linear.Linear('Discriminator.Output', 4*4*DIM_D_4, 1, output)
 
     return tf.reshape(output, [-1])
 
@@ -206,6 +214,8 @@ with tf.Session() as session:
         for device in DEVICES:
             with tf.device(device):
                 fake_data_splits.append(Generator(BATCH_SIZE/len(DEVICES)))
+        # fake_data = tf.concat(fake_data_splits, axis=0)
+        # fake_data_splits = tf.split(fake_data, len(DEVICES))
 
         all_real_data = tf.reshape(2*((tf.cast(all_real_data_conv, tf.float32)/255.)-.5), [BATCH_SIZE, OUTPUT_DIM])
         all_real_data_splits = tf.split(all_real_data, len(DEVICES)/2)
@@ -225,17 +235,18 @@ with tf.Session() as session:
         for i, device in enumerate(DEVICES_B):
             with tf.device(device):
                 real_data = tf.identity(all_real_data_splits[i]) # transfer from gpu0
-                fake_data = lib.concat([fake_data_splits[i], fake_data_splits[len(DEVICES_A)+i]], axis=0)
+                fake_data__ = lib.concat([fake_data_splits[i], fake_data_splits[len(DEVICES_A)+i]], axis=0)
                 alpha = tf.random_uniform(
                     shape=[BATCH_SIZE/len(DEVICES_A),1], 
                     minval=0.,
                     maxval=1.
                 )
-                differences = fake_data - real_data
+                differences = fake_data__ - real_data
                 interpolates = real_data + (alpha*differences)
                 gradients = tf.gradients(Discriminator(interpolates), [interpolates])[0]
                 slopes = tf.sqrt(tf.reduce_sum(tf.square(gradients), reduction_indices=[1]))
-                gradient_penalty = 10*tf.reduce_mean((slopes-1.)**2)
+                # print "WARNING NO LIPSCHITZ PENALTY"
+                gradient_penalty = 10.*tf.reduce_mean((slopes-1.)**2)
                 disc_costs.append(gradient_penalty)
 
         disc_cost = tf.add_n(disc_costs) / len(DEVICES_A)
@@ -255,54 +266,55 @@ with tf.Session() as session:
 
 
     else:
-        split_real_data_conv = lib.split(all_real_data_conv, len(DEVICES), axis=0)
+        raise Exception()
+        # split_real_data_conv = lib.split(all_real_data_conv, len(DEVICES), axis=0)
 
-        gen_costs, disc_costs = [],[]
+        # gen_costs, disc_costs = [],[]
 
-        for device_index, (device, real_data_conv) in enumerate(zip(DEVICES, split_real_data_conv)):
-            with tf.device(device):
+        # for device_index, (device, real_data_conv) in enumerate(zip(DEVICES, split_real_data_conv)):
+        #     with tf.device(device):
 
-                real_data = tf.reshape(2*((tf.cast(real_data_conv, tf.float32)/255.)-.5), [BATCH_SIZE/len(DEVICES), OUTPUT_DIM])
-                fake_data = Generator(BATCH_SIZE/len(DEVICES))
+        #         real_data = tf.reshape(2*((tf.cast(real_data_conv, tf.float32)/255.)-.5), [BATCH_SIZE/len(DEVICES), OUTPUT_DIM])
+        #         fake_data = Generator(BATCH_SIZE/len(DEVICES))
 
-                disc_all = Discriminator(lib.concat([real_data, fake_data],0))
-                disc_real = disc_all[:tf.shape(real_data)[0]]
-                disc_fake = disc_all[tf.shape(real_data)[0]:]
+        #         disc_all = Discriminator(lib.concat([real_data, fake_data],0))
+        #         disc_real = disc_all[:tf.shape(real_data)[0]]
+        #         disc_fake = disc_all[tf.shape(real_data)[0]:]
 
-                gen_cost = -tf.reduce_mean(Discriminator(Generator(GEN_BS_MULTIPLE*BATCH_SIZE/len(DEVICES))))
-                disc_cost = tf.reduce_mean(disc_fake) - tf.reduce_mean(disc_real)
+        #         gen_cost = -tf.reduce_mean(Discriminator(Generator(GEN_BS_MULTIPLE*BATCH_SIZE/len(DEVICES))))
+        #         disc_cost = tf.reduce_mean(disc_fake) - tf.reduce_mean(disc_real)
 
-                alpha = tf.random_uniform(
-                    shape=[BATCH_SIZE/len(DEVICES),1], 
-                    minval=0.,
-                    maxval=1.
-                )
-                differences = fake_data - real_data
-                interpolates = real_data + (alpha*differences)
-                interpolates = tf.stop_gradient(interpolates)
-                gradients = tf.gradients(Discriminator(interpolates), [interpolates])[0]
-                slopes = tf.sqrt(tf.reduce_sum(tf.square(gradients), reduction_indices=[1]))
-                lipschitz_penalty = 10*tf.reduce_mean((slopes-1.)**2)
-                disc_cost += lipschitz_penalty
+        #         alpha = tf.random_uniform(
+        #             shape=[BATCH_SIZE/len(DEVICES),1], 
+        #             minval=0.,
+        #             maxval=1.
+        #         )
+        #         differences = fake_data - real_data
+        #         interpolates = real_data + (alpha*differences)
+        #         interpolates = tf.stop_gradient(interpolates)
+        #         gradients = tf.gradients(Discriminator(interpolates), [interpolates])[0]
+        #         slopes = tf.sqrt(tf.reduce_sum(tf.square(gradients), reduction_indices=[1]))
+        #         lipschitz_penalty = 100.*tf.reduce_mean((slopes-1.)**2)
+        #         disc_cost += lipschitz_penalty
 
-                gen_costs.append(gen_cost)
-                disc_costs.append(disc_cost)
+        #         gen_costs.append(gen_cost)
+        #         disc_costs.append(disc_cost)
 
-        gen_cost = tf.add_n(gen_costs) / len(DEVICES)
-        disc_cost = tf.add_n(disc_costs) / len(DEVICES)
+        # gen_cost = tf.add_n(gen_costs) / len(DEVICES)
+        # disc_cost = tf.add_n(disc_costs) / len(DEVICES)
 
-        if DECAY:
-            decay = tf.maximum(0., 1.-(tf.cast(iteration, tf.float32)/ITERS))
-        else:
-            decay = 1.
-        gen_train_op = tf.train.AdamOptimizer(learning_rate=LR*decay, beta1=MOMENTUM_G, beta2=0.9).minimize(gen_cost, var_list=lib.params_with_name('Generator'), colocate_gradients_with_ops=True)
-        disc_train_op = tf.train.AdamOptimizer(learning_rate=LR*decay, beta1=MOMENTUM_D, beta2=0.9).minimize(disc_cost, var_list=lib.params_with_name('Discriminator.'), colocate_gradients_with_ops=True)
+        # if DECAY:
+        #     decay = tf.maximum(0., 1.-(tf.cast(iteration, tf.float32)/ITERS))
+        # else:
+        #     decay = 1.
+        # gen_train_op = tf.train.AdamOptimizer(learning_rate=LR*decay, beta1=MOMENTUM_G, beta2=0.9).minimize(gen_cost, var_list=lib.params_with_name('Generator'), colocate_gradients_with_ops=True)
+        # disc_train_op = tf.train.AdamOptimizer(learning_rate=LR*decay, beta1=MOMENTUM_D, beta2=0.9).minimize(disc_cost, var_list=lib.params_with_name('Discriminator.'), colocate_gradients_with_ops=True)
 
 
     frame_i = [0]
     fixed_noise = tf.constant(np.random.normal(size=(64, 128)).astype('float32'))
     fixed_noise_samples = Generator(64, noise=fixed_noise)
-    def generate_image(frame, true_dist):
+    def generate_image(frame):
         samples = session.run(fixed_noise_samples)
         samples = ((samples+1.)*(255.99/2)).astype('int32')
         lib.save_images.save_images(samples.reshape((64, 3, 128, 128)), 'samples_{}.png'.format(frame))
@@ -317,31 +329,41 @@ with tf.Session() as session:
 
     session.run(tf.initialize_all_variables())
 
+    generate_image(0)
+
     gen = inf_train_gen()
+
+    saver = tf.train.Saver(write_version=tf.train.SaverDef.V2)
+    # Uncomment this to restore params
+    # print "WARNING RESTORING PARAMS FROM CHECKPOINT"
+    # saver.restore(session, os.getcwd()+"/params.ckpt")
 
     for _iteration in xrange(ITERS):
         start_time = time.time()
-
-        _ = session.run(
-            gen_train_op,
-            feed_dict={iteration: _iteration}
-        )
 
         for i in xrange(CRITIC_ITERS):
             _data = gen.next()
             _data = _data.reshape((BATCH_SIZE,3,128,128))
             _disc_cost, _ = session.run(
                 [disc_cost, disc_train_op], 
-                feed_dict={all_real_data_conv: _data, iteration: _iteration}
+                feed_dict={all_real_data_conv: _data, iteration: _iteration}#, fake_data: fake_data_buffer[np.random.choice(BUFFER_LEN*BATCH_SIZE, BATCH_SIZE)]}
             )
+
+        _ = session.run(
+            gen_train_op,
+            feed_dict={iteration: _iteration}
+        )
 
         lib.plot.plot('cost', _disc_cost)
         lib.plot.plot('time', time.time() - start_time)
 
-        if _iteration % 100 == 99:
-            generate_image(_iteration, _data)
+        if _iteration % 100 == 0:
+            generate_image(_iteration)
 
-        if (_iteration < 100) or (_iteration % 100 == 99):
+        if _iteration % 1000 == 0:
+            saver.save(session, 'params.ckpt')
+
+        if _iteration % 5 == 0:
             lib.plot.flush(print_stds=True)
 
         lib.plot.tick()

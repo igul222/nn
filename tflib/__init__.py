@@ -1,11 +1,12 @@
 import numpy as np
 import tensorflow as tf
 
+import collections
 import locale
 
 locale.setlocale(locale.LC_ALL, '')
 
-_params = {}
+_params = collections.OrderedDict()
 _param_aliases = {}
 def param(name, *args, **kwargs):
     """

@@ -1,8 +1,8 @@
 import numpy as np
 
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
+# import matplotlib
+# matplotlib.use('Agg')
+# import matplotlib.pyplot as plt
 
 import collections
 import time
@@ -31,11 +31,11 @@ def flush(print_stds=True):
 		x_vals = np.sort(_since_beginning[name].keys())
 		y_vals = [_since_beginning[name][x] for x in x_vals]
 
-		plt.clf()
-		plt.plot(x_vals, y_vals)
-		plt.xlabel('iteration')
-		plt.ylabel(name)
-		plt.savefig(name.replace(' ', '_')+'.jpg')
+		# plt.clf()
+		# plt.plot(x_vals, y_vals)
+		# plt.xlabel('iteration')
+		# plt.ylabel(name)
+		# plt.savefig(name.replace(' ', '_')+'.jpg')
 
 	print "iter {}\t{}".format(_iter[0], "\t".join(prints))
 	_since_last_flush.clear()
