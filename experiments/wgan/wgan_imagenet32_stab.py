@@ -39,7 +39,7 @@ import time
 import functools
 
 BATCH_SIZE = 64
-ITERS = 10000
+ITERS = 20000
 # DIM = 32
 # DIM_G = 32
 MODE = 'dcgan' # dcgan, wgan, wgan-gp
@@ -47,8 +47,8 @@ DISC_ITERS = 1
 DATASET = 'imagenet'
 DIM_G = 64
 DIM_D = 64
-EXTRA_DEPTH_G = 0
-EXTRA_DEPTH_D = 0
+EXTRA_DEPTH_G = 5
+EXTRA_DEPTH_D = EXTRA_DEPTH_G
 
 # These settings apply only to WGAN-GP
 # GEN_LR = e-5

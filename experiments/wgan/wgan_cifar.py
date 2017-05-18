@@ -802,11 +802,11 @@ with tf.Session() as session:
             for images,_labels in dev_gen():
                 _dev_disc_cost = session.run([disc_cost], feed_dict={all_real_data_int: images,all_real_labels:_labels})
                 dev_disc_costs.append(_dev_disc_cost)
-            lib.plot.plot('dev_cost', np.mean(dev_disc_costs), output_prefix=OUTPUT_PREFIX)
+            lib.plot.plot('dev_cost', np.mean(dev_disc_costs))
 
             generate_image(iteration, _data)
 
         if (iteration < 500) or (iteration % 1000 == 999):
-            lib.plot.flush()
+            lib.plot.flush(output_prefix=OUTPUT_PREFIX)
 
         lib.plot.tick()
