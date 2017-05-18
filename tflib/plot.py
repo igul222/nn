@@ -18,7 +18,7 @@ def tick():
 def plot(name, value):
 	_since_last_flush[name][_iter[0]] = value
 
-def flush(print_stds=True):
+def flush(print_stds=True, output_prefix=None):
 	prints = []
 
 	for name, vals in _since_last_flush.items():
@@ -40,5 +40,9 @@ def flush(print_stds=True):
 	print "iter {}\t{}".format(_iter[0], "\t".join(prints))
 	_since_last_flush.clear()
 
-	with open('log.pkl', 'wb') as f:
+	if output_prefix is not None:
+		log_filename = '{}_log.pkl'.format(output_prefix)
+	else:
+		log_filename = 'log.pkl'
+	with open(log_filename, 'wb') as f:
 		pickle.dump(dict(_since_beginning), f, pickle.HIGHEST_PROTOCOL)

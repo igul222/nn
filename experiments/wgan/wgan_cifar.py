@@ -39,6 +39,8 @@ import functools
 import locale
 locale.setlocale(locale.LC_ALL, '')
 
+OUTPUT_PREFIX = None
+
 BATCH_SIZE = 64
 ITERS = 100000
 # DIM = 32
@@ -709,7 +711,10 @@ with tf.Session() as session:
     def generate_image(frame, true_dist):
         samples = session.run(fixed_noise_samples)
         samples = ((samples+1.)*(255./2)).astype('int32')
-        lib.save_images.save_images(samples.reshape((100, 3, 32, 32)), 'samples_{}.png'.format(frame))
+        if OUTPUT_PREFIX is not None:
+            lib.save_images.save_images(samples.reshape((100, 3, 32, 32)), '{}_samples_{}.png'.format(OUTPUT_PREFIX, frame))
+        else:
+            lib.save_images.save_images(samples.reshape((100, 3, 32, 32)), 'samples_{}.png'.format(frame))
 
     fake_labels_100 = tf.cast(tf.random_uniform([100])*10, tf.int32)
     samples_100 = Generator(100, fake_labels_100)
@@ -797,7 +802,7 @@ with tf.Session() as session:
             for images,_labels in dev_gen():
                 _dev_disc_cost = session.run([disc_cost], feed_dict={all_real_data_int: images,all_real_labels:_labels})
                 dev_disc_costs.append(_dev_disc_cost)
-            lib.plot.plot('dev_cost', np.mean(dev_disc_costs))
+            lib.plot.plot('dev_cost', np.mean(dev_disc_costs), output_prefix=OUTPUT_PREFIX)
 
             generate_image(iteration, _data)
 
