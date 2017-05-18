@@ -40,7 +40,8 @@ def make_generator(path, batch_size):
     return get_epoch
 
 def load(batch_size):
-    return make_generator('/media/ramdisk/ILSVRC2012_128', batch_size)
+    return make_generator('/media/ramdisk/lsun_128', batch_size)
+    # return make_generator('/media/ramdisk/ILSVRC2012_128', batch_size)
     # return make_generator('/home/ishaan/data/ILSVRC2012_128', batch_size)
 
 if __name__ == '__main__':

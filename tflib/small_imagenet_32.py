@@ -19,10 +19,10 @@ def make_generator(path, n_files, batch_size, pad):
 
 def load(batch_size, dev_set_size=49999):
     return (
-        make_generator('/media/ramdisk/train_32x32', 1281149, batch_size, len(str(1281149))),
-        None
-        # make_generator('/home/ishaan/data/imagenet32/train_32x32', 1281149, batch_size, len(str(1281149))),
-        # make_generator('/home/ishaan/data/imagenet32/valid_32x32', dev_set_size, batch_size, len(str(49999)))
+        # make_generator('/media/ramdisk/train_32x32', 1281149, batch_size, len(str(1281149))),
+        # None
+        make_generator('/home/ishaan/data/imagenet32/train_32x32', 1281149, batch_size, len(str(1281149))),
+        make_generator('/home/ishaan/data/imagenet32/valid_32x32', dev_set_size, batch_size, len(str(49999)))
     )
 
 if __name__ == '__main__':

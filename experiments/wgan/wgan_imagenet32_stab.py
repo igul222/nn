@@ -7,7 +7,7 @@ N_GPUS = 2
 
 # try: # This only matters on Ishaan's computer
 import experiment_tools
-experiment_tools.wait_for_gpu(tf=True, n_gpus=N_GPUS, skip=[0,1])
+experiment_tools.wait_for_gpu(tf=True, n_gpus=N_GPUS)
 # except ImportError:
 #     pass
 
@@ -45,9 +45,8 @@ ITERS = 10000
 MODE = 'dcgan' # dcgan, wgan, wgan-gp
 DISC_ITERS = 1
 DATASET = 'imagenet'
-
-DIM_G = 32
-DIM_D = 32
+DIM_G = 64
+DIM_D = 64
 EXTRA_DEPTH_G = 0
 EXTRA_DEPTH_D = 0
 
@@ -515,9 +514,9 @@ with tf.Session() as session:
                     disc_real = Discriminator(real_data)
                     disc_fake = Discriminator(fake_data)
 
-                    gen_cost = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_fake, tf.ones_like(disc_fake)))
-                    disc_cost =  tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_fake, tf.zeros_like(disc_fake)))
-                    disc_cost += tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_real, tf.ones_like(disc_real)))
+                    gen_cost = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=disc_fake, labels=tf.ones_like(disc_fake)))
+                    disc_cost =  tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=disc_fake, labels=tf.zeros_like(disc_fake)))
+                    disc_cost += tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=disc_real, labels=tf.ones_like(disc_real)))
                     disc_cost /= 2.
 
                 gen_costs.append(gen_cost)
@@ -547,7 +546,7 @@ with tf.Session() as session:
         elif MODE == 'dcgan':
             gen_train_op = tf.train.AdamOptimizer(learning_rate=2e-4, beta1=0.5).minimize(gen_cost, var_list=lib.params_with_name('Generator'), colocate_gradients_with_ops=True)
             disc_train_op = tf.train.AdamOptimizer(learning_rate=2e-4, beta1=0.5).minimize(disc_cost, var_list=lib.params_with_name('Discriminator.'), colocate_gradients_with_ops=True)
-
+            clip_disc_weights = None
 
     frame_i = [0]
     fixed_noise = tf.constant(np.random.normal(size=(128, 128)).astype('float32'))
@@ -596,7 +595,7 @@ with tf.Session() as session:
                     feed_dict={iteration: _iteration}
                 )
 
-                for i in xrange(CRITIC_ITERS):
+                for i in xrange(DISC_ITERS):
                     _data = gen.next()
                     _data = _data.reshape((BATCH_SIZE,3,32,32))
                     _disc_cost, _ = session.run(

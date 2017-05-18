@@ -3,7 +3,7 @@
 import os, sys
 sys.path.append(os.getcwd())
 
-N_GPUS = 4
+N_GPUS = 8
 
 # This only matters on Ishaan's computer, comment it out otherwise
 try:
@@ -158,7 +158,7 @@ def ResnetGenerator(n_samples, noise=None):
 
     output = Normalize('Generator.OutputN', output)
     output = nonlinearity(output)
-    output = UpsampleConv('Generator.Output', DIM_G_64, 3, 5, output, he_init=False)
+    output = ScaledUpsampleConv('Generator.Output', DIM_G_64, 3, 5, output, he_init=False)
     # output = lib.ops.deconv2d.Deconv2D('Generator.Output', DIM_G_64, 3, 5, output, he_init=False)
 
     output = tf.tanh(output)
